@@ -1335,7 +1335,7 @@ end
 -- Isolated function scope prevents exceeding Luau's local-register limit.
 ;(function()
     local state = {
-        Fly = false, FlySpeed = 1, FlyKey = "p",
+        Fly = false, FlySpeed = 1, FlyKey = "F",
         Noclip = false, Speed = false, SpeedMultiplier = 2,
         NoclipOriginal = {},
         FlyForce = nil, FlyRoot = nil, FlyHumanoid = nil,
@@ -1417,7 +1417,7 @@ end
             tonumber(Options.MiscFlySpeed.Value) or 1, 1, 10)
     end)
     fly:AddKeyPicker("MiscFlyKey", {
-        Text = "Fly Key", Default = "p"
+        Text = "Fly Key", Default = "F"
     }):OnChanged(function()
         state.FlyKey = tostring(Options.MiscFlyKey.Value or "F")
     end)
@@ -2999,6 +2999,7 @@ end)() -- Silent Aim controls in their own function scope
 local TriggerBotSettings = {
     Enabled = false,
     TeamCheck = false,
+    VisibleCheck = false,
     Delay = 0.12,
     ToggleKey = "T",
     TargetHead = false,
@@ -3036,22 +3037,72 @@ local function syncTriggerEnabled()
     end
 end
 
+-- A filtered camera ray finds players under the crosshair even when a wall
+-- is in front of them. Visible Check independently decides whether walls block.
+local triggerTargetRayParams = RaycastParams.new()
+triggerTargetRayParams.FilterType = Enum.RaycastFilterType.Include
+triggerTargetRayParams.IgnoreWater = true
+
+local triggerVisibilityRayParams = RaycastParams.new()
+triggerVisibilityRayParams.FilterType = Enum.RaycastFilterType.Exclude
+triggerVisibilityRayParams.IgnoreWater = true
+
 local function triggerTargetValid()
-    local part = Mouse.Target
-    if not part then return false end
-    local model = part:FindFirstAncestorOfClass("Model")
-    if not model then return false end
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return false end
-    local player = Players:GetPlayerFromCharacter(model)
-    if not player or player == LocalPlayer then return false end
-    if TriggerBotSettings.TeamCheck and player.Team ~= nil
-        and player.Team == LocalPlayer.Team then return false end
-    -- Head and body are independent trigger zones.
-    if part.Name == "Head" then
-        return TriggerBotSettings.TargetHead
+    if not TriggerBotSettings.TargetHead and not TriggerBotSettings.TargetBody then
+        return false
     end
-    return TriggerBotSettings.TargetBody
+
+    local currentCamera = workspace.CurrentCamera
+    if not currentCamera then return false end
+
+    local targetParts = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer
+            and (not TriggerBotSettings.TeamCheck or player.Team == nil
+                or player.Team ~= LocalPlayer.Team) then
+            local character = player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                for _, part in ipairs(character:GetChildren()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        if (part.Name == "Head" and TriggerBotSettings.TargetHead)
+                            or (part.Name ~= "Head" and TriggerBotSettings.TargetBody) then
+                            table.insert(targetParts, part)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if #targetParts == 0 then return false end
+
+    -- ScreenPointToRay uses the same inset-adjusted mouse coordinates as Mouse.X/Y.
+    local aimRay = currentCamera:ScreenPointToRay(Mouse.X, Mouse.Y)
+    triggerTargetRayParams.FilterDescendantsInstances = targetParts
+    local hit = workspace:Raycast(aimRay.Origin, aimRay.Direction * 10000, triggerTargetRayParams)
+    if not hit then return false end
+
+    if TriggerBotSettings.VisibleCheck then
+        local targetCharacter = hit.Instance:FindFirstAncestorOfClass("Model")
+        local ignored = {}
+        if LocalPlayer.Character then
+            table.insert(ignored, LocalPlayer.Character)
+        end
+        if targetCharacter then
+            table.insert(ignored, targetCharacter)
+        end
+        triggerVisibilityRayParams.FilterDescendantsInstances = ignored
+        -- Any object between the camera and target prevents the shot.
+        local obstacle = workspace:Raycast(
+            aimRay.Origin,
+            hit.Position - aimRay.Origin,
+            triggerVisibilityRayParams
+        )
+        if obstacle then return false end
+    end
+
+    return true
 end
 
 local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
@@ -3088,6 +3139,11 @@ local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
         Text = "Trigger Team Check", Default = false
     }):OnChanged(function()
         TriggerBotSettings.TeamCheck = Toggles.TriggerTeamCheck.Value
+    end)
+    Trigger:AddToggle("TriggerVisibleCheck", {
+        Text = "Visible Check", Default = false
+    }):OnChanged(function()
+        TriggerBotSettings.VisibleCheck = Toggles.TriggerVisibleCheck.Value
     end)
     Trigger:AddToggle("TriggerTargetHead", {
         Text = "Target Head", Default = false
@@ -3127,9 +3183,9 @@ end)
 
 RunService.RenderStepped:Connect(function()
     if not TriggerBotSettings.Enabled then return end
-    if not triggerTargetValid() then return end
     local now = os.clock()
     if now - triggerLastShot < TriggerBotSettings.Delay then return end
+    if not triggerTargetValid() then return end
     if type(mouse1click) == "function" then
         triggerLastShot = now
         mouse1click()
