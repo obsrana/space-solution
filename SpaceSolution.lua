@@ -1335,7 +1335,7 @@ end
 -- Isolated function scope prevents exceeding Luau's local-register limit.
 ;(function()
     local state = {
-        Fly = false, FlySpeed = 1, FlyKey = "F",
+        Fly = false, FlySpeed = 1, FlyKey = "p",
         Noclip = false, Speed = false, SpeedMultiplier = 2,
         NoclipOriginal = {},
         FlyForce = nil, FlyRoot = nil, FlyHumanoid = nil,
@@ -1419,7 +1419,7 @@ end
     fly:AddKeyPicker("MiscFlyKey", {
         Text = "Fly Key", Default = "F"
     }):OnChanged(function()
-        state.FlyKey = tostring(Options.MiscFlyKey.Value or "F")
+        state.FlyKey = tostring(Options.MiscFlyKey.Value or "p")
     end)
     fly:AddLabel("WASD: Move  |  Space: Up  |  Shift: Down")
 
