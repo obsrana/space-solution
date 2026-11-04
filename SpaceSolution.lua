@@ -22,6 +22,8 @@ local SilentAimSettings = {
 
     VisibleCheck = false,
 
+    MagicBullet = false,
+
     TargetPart = "HumanoidRootPart",
 
     SilentAimMethod = "Raycast",
@@ -374,7 +376,9 @@ local function getClosestPlayer()
 
         if not Character then continue end
 
-        if Toggles.VisibleCheck.Value and not IsPlayerVisible(Player) then continue end
+        -- Magic Bullet ignores client-side occlusion when selecting a target.
+        if Toggles.VisibleCheck.Value and not SilentAimSettings.MagicBullet
+            and not IsPlayerVisible(Player) then continue end
 
         local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
 
@@ -3210,6 +3214,14 @@ end)
 
     end)
 
+    -- For client-side ray-based weapons, cast against the selected character
+    -- instead of the map geometry. Server-validated weapons can still reject hits.
+    Main:AddToggle("MagicBullet", {
+        Text = "Magic Bullet", Default = SilentAimSettings.MagicBullet
+    }):OnChanged(function()
+        SilentAimSettings.MagicBullet = Toggles.MagicBullet.Value
+    end)
+
     Main:AddDropdown("TargetPart", {AllowNull = true, Text = "Target Part", Default = SilentAimSettings.TargetPart, Values = {"Head", "HumanoidRootPart", "Random"}}):OnChanged(function()
 
         SilentAimSettings.TargetPart = Options.TargetPart.Value
@@ -3842,6 +3854,7 @@ local LoadConfigurationBOX = ConfigTab:AddRightTabbox("Load Configuration") do
             if type(isfile) == "function" and not isfile(ConfigPath(selected, "json")) then
                 Toggles.TeamCheck:SetValue(SilentAimSettings.TeamCheck)
                 Toggles.VisibleCheck:SetValue(SilentAimSettings.VisibleCheck)
+                Toggles.MagicBullet:SetValue(SilentAimSettings.MagicBullet == true)
                 Options.TargetPart:SetValue(SilentAimSettings.TargetPart)
                 Options.Method:SetValue(SilentAimSettings.SilentAimMethod)
                 Toggles.Visible:SetValue(SilentAimSettings.FOVVisible)
@@ -3906,6 +3919,12 @@ do
 
                     Arguments[2] = Ray.new(Origin, Direction)
 
+                    if SilentAimSettings.MagicBullet then
+                        -- Whitelist bypasses intervening world parts client-side.
+                        return workspace:FindPartOnRayWithWhitelist(
+                            Arguments[2], {HitPart.Parent}, true
+                        )
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
@@ -3927,7 +3946,9 @@ do
                     local Direction = getDirection(Origin, HitPart.Position)
 
                     Arguments[2] = Ray.new(Origin, Direction)
-
+                    if SilentAimSettings.MagicBullet then
+                        Arguments[3] = {HitPart.Parent}
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
@@ -3949,7 +3970,11 @@ do
                     local Direction = getDirection(Origin, HitPart.Position)
 
                     Arguments[2] = Ray.new(Origin, Direction)
-
+                    if SilentAimSettings.MagicBullet then
+                        return workspace:FindPartOnRayWithWhitelist(
+                            Arguments[2], {HitPart.Parent}, true
+                        )
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
@@ -3967,7 +3992,18 @@ do
                 if HitPart then
 
                     Arguments[3] = getDirection(A_Origin, HitPart.Position)
-
+                    if SilentAimSettings.MagicBullet then
+                        local previousParams = Arguments[4]
+                        local magicParams = RaycastParams.new()
+                        magicParams.FilterType = Enum.RaycastFilterType.Include
+                        magicParams.FilterDescendantsInstances = {HitPart.Parent}
+                        magicParams.IgnoreWater = true
+                        if typeof(previousParams) == "RaycastParams" then
+                            magicParams.CollisionGroup = previousParams.CollisionGroup
+                            magicParams.RespectCanCollide = previousParams.RespectCanCollide
+                        end
+                        Arguments[4] = magicParams
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
