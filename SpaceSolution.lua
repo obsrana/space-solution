@@ -436,6 +436,21 @@ local function uiButton(parent, text, color)
         AutoButtonColor = false, BackgroundColor3 = color or INPUT
     }, parent)
     uiRound(b, 8)
+    -- Lightweight hover outline: no layout reflow or background-color conflicts.
+    local edge = uiCreate("UIStroke", {
+        Color = ACCENT, Thickness = 1, Transparency = 1,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, b)
+    b.MouseEnter:Connect(function()
+        game:GetService("TweenService"):Create(edge,
+            TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+            {Transparency = 0.58}):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        game:GetService("TweenService"):Create(edge,
+            TweenInfo.new(0.20, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+            {Transparency = 1}):Play()
+    end)
     return b
 end
 
@@ -460,40 +475,52 @@ if type(protectgui) == "function" then pcall(protectgui, ui) end
 local frame = uiCreate("CanvasGroup", {
     Size = UDim2.fromOffset(862, 524),
     AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-    BackgroundColor3 = BG, BorderSizePixel = 0, Active = true
+    BackgroundColor3 = BG, BorderSizePixel = 0, Active = true,
+    GroupTransparency = 1 -- start hidden until the intro starts
 }, ui)
--- Smooth menu opening and closing animations.
+-- Subtle fade/slide/size tweens for opening and closing the menu.
+-- Revisions prevent stale close callbacks from hiding a newly reopened menu.
 local TweenService = game:GetService("TweenService")
 local menuTween, scaleTween
 local animationRevision = 0
 local menuOpen = true
-local openTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local closeTweenInfo = TweenInfo.new(0.19, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local openTweenInfo = TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local closeTweenInfo = TweenInfo.new(0.26, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 local function animateMenu(shouldOpen, instant)
     animationRevision = animationRevision + 1
     local revision = animationRevision
     menuOpen = shouldOpen
+    frame:SetAttribute("SpaceSolutionIntroInterrupted", true)
     if menuTween then menuTween:Cancel() end
     if scaleTween then scaleTween:Cancel() end
     if shouldOpen then
         ui.Enabled = true
         frame.Visible = true
-        if instant then
+        local introViewport = frame:FindFirstChild("SpaceSolutionIntroViewport")
+        local introBody = introViewport and introViewport:FindFirstChild("SpaceSolutionIntroBody")
+        if introBody then
+            introBody.Position = UDim2.fromOffset(0, 0)
+            introBody.GroupTransparency = 0
+        end
+        if instant or frame.GroupTransparency >= 0.99 then
             frame.GroupTransparency = 1
-            frame.Position = UDim2.new(0.5, 0, 0.5, 16)
+            frame.Position = UDim2.new(0.5, 0, 0.5, 12)
+            frame.Size = UDim2.fromOffset(852, 516)
         end
         menuTween = TweenService:Create(frame, openTweenInfo, {
             GroupTransparency = 0,
-            Position = UDim2.fromScale(0.5, 0.5)
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(862, 524),
         })
         menuTween:Play()
     else
         menuTween = TweenService:Create(frame, closeTweenInfo, {
             GroupTransparency = 1,
-            Position = UDim2.new(0.5, 0, 0.5, 12)
+            Position = UDim2.new(0.5, 0, 0.5, 9),
+            Size = UDim2.fromOffset(854, 518),
         })
         menuTween:Play()
-        task.delay(closeTweenInfo.Time, function()
+        task.delay(closeTweenInfo.Time + 0.015, function()
             if revision == animationRevision and not menuOpen and ui.Parent then
                 ui.Enabled = false
             end
@@ -512,9 +539,18 @@ local function resizeMenu()
 end
 resizeMenu()
 workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(resizeMenu)
-RunService.RenderStepped:Connect(function()
-    if ui.Enabled then resizeMenu() end
-end)
+-- Update UIScale only when the viewport actually changes (not every frame).
+do
+    local lastViewport = Vector2.new(-1, -1)
+    RunService.RenderStepped:Connect(function()
+        if not ui.Enabled then return end
+        local currentCamera = workspace.CurrentCamera
+        if currentCamera and currentCamera.ViewportSize ~= lastViewport then
+            lastViewport = currentCamera.ViewportSize
+            resizeMenu()
+        end
+    end)
+end
 
 local header = uiCreate("Frame", {
     Size = UDim2.new(1, 0, 0, 57), BackgroundColor3 = BAR,
@@ -571,14 +607,31 @@ subtitle.Size = UDim2.fromOffset(180, 14)
 -- Clean header: no redundant SilentAim / TriggerBot / Aimbot labels.
 local headerTop = {}
 
+-- Loading intro from the reference video: first the logo/header appears,
+-- then the actual navigation and controls slide upwards from below.
+-- The viewport masks the moving content and stays behind the fixed header.
+uiCreate("CanvasGroup", {
+    Name = "SpaceSolutionIntroBody",
+    Position = UDim2.fromOffset(0, 448),
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+    GroupTransparency = 1,
+}, uiCreate("Frame", {
+    Name = "SpaceSolutionIntroViewport",
+    Position = UDim2.fromOffset(0, 57),
+    Size = UDim2.new(1, 0, 1, -57),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+}, frame))
 local side = uiCreate("Frame", {
-    Size = UDim2.new(0, 191, 1, -72), Position = UDim2.fromOffset(7, 65),
+    Size = UDim2.new(0, 191, 1, -15), Position = UDim2.fromOffset(7, 8),
     BackgroundTransparency = 1
-}, frame)
+}, frame.SpaceSolutionIntroViewport.SpaceSolutionIntroBody)
 local body = uiCreate("Frame", {
-    Size = UDim2.new(1, -215, 1, -72), Position = UDim2.fromOffset(208, 65),
+    Size = UDim2.new(1, -215, 1, -15), Position = UDim2.fromOffset(208, 8),
     BackgroundTransparency = 1
-}, frame)
+}, frame.SpaceSolutionIntroViewport.SpaceSolutionIntroBody)
 local screens = {}
 local links = {}
 local linkLabels = {}
@@ -606,35 +659,68 @@ local navDefs = {
     {"List", "@"}, {"Ustawienia", "#"}
 }
 local selectedPage = "Walka"
-local pageTween = nil
+local pageTween, pageOutTween = nil, nil
 local pageAnimationRevision = 0
-local pageTweenInfo = TweenInfo.new(0.23, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local pageTweenInfo = TweenInfo.new(0.30, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local function showPage(name)
     if not screens[name] or name == selectedPage then return end
     pageAnimationRevision = pageAnimationRevision + 1
+    local revision = pageAnimationRevision
+    local previousPage = screens[selectedPage]
+    local activePage = screens[name]
     if pageTween then pageTween:Cancel() end
+    if pageOutTween then pageOutTween:Cancel() end
     for key, page in pairs(screens) do
-        page.Visible = (key == name)
-        if key ~= name then
+        if page ~= previousPage and page ~= activePage then
+            page.Visible = false
             page.GroupTransparency = 0
-            page.Position = UDim2.fromScale(0, 0)
+            page.Position = UDim2.fromOffset(0, 0)
         end
     end
     selectedPage = name
-    local activePage = screens[name]
+    -- Show combat-only header subtabs exclusively on the Combat page.
+    -- Keep these lookups inside showPage to avoid adding top-level Luau locals.
+    for _, tabName in ipairs({"Silent", "Trigger", "Hitbox"}) do
+        local button = header:FindFirstChild("CombatTab" .. tabName)
+        if button then
+            button.Visible = (name == "Walka")
+        end
+    end
+    if previousPage and previousPage ~= activePage then
+        previousPage.Visible = true
+        previousPage.ZIndex = 1
+        pageOutTween = TweenService:Create(previousPage,
+            TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                GroupTransparency = 1,
+                Position = UDim2.fromOffset(0, -6),
+            })
+        pageOutTween:Play()
+        task.delay(0.17, function()
+            if revision ~= pageAnimationRevision then return end
+            previousPage.Visible = false
+            previousPage.GroupTransparency = 0
+            previousPage.Position = UDim2.fromOffset(0, 0)
+        end)
+    end
+    activePage.Visible = true
+    activePage.ZIndex = 2
     activePage.GroupTransparency = 1
-    activePage.Position = UDim2.new(0, 0, 0, 10)
+    activePage.Position = UDim2.fromOffset(0, 11)
     pageTween = TweenService:Create(activePage, pageTweenInfo, {
         GroupTransparency = 0,
-        Position = UDim2.fromScale(0, 0)
+        Position = UDim2.fromOffset(0, 0),
     })
     pageTween:Play()
     for key, b in pairs(links) do
-        b.BackgroundColor3 = key == name and INPUT or BAR
-        b.TextColor3 = key == name and WHITE or MUTED
+        local chosen = key == name
+        TweenService:Create(b, TweenInfo.new(0.19, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+            BackgroundColor3 = chosen and INPUT or BAR,
+        }):Play()
         if linkLabels[key] then
             for _, lbl in ipairs(linkLabels[key]) do
-                lbl.TextColor3 = key == name and WHITE or MUTED
+                TweenService:Create(lbl, TweenInfo.new(0.19, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                    TextColor3 = chosen and WHITE or MUTED,
+                }):Play()
             end
         end
         local sidebarIcon = b:FindFirstChild("SidebarIcon")
@@ -736,26 +822,58 @@ do
             if selectedPage ~= "Walka" then showPage("Walka") end
             return
         end
-        if combat.tween then
-            combat.tween:Cancel()
-            combat.tween = nil
-        end
+        combat.revision = (combat.revision or 0) + 1
+        local revision = combat.revision
+        local previous = combat.views[combat.active]
+        if combat.tween then combat.tween:Cancel() end
+        if combat.exitTween then combat.exitTween:Cancel() end
         combat.active = name
         for viewName, entry in pairs(combat.views) do
-            entry.frame.Visible = viewName == name
-            entry.frame.GroupTransparency = 0
-            entry.frame.Position = UDim2.fromOffset(0, 0)
+            if entry ~= view and entry ~= previous then
+                entry.frame.Visible = false
+                entry.frame.GroupTransparency = 0
+                entry.frame.Position = UDim2.fromOffset(0, 0)
+            end
         end
+        if previous and previous ~= view and not instant then
+            previous.frame.Visible = true
+            previous.frame.ZIndex = 1
+            combat.exitTween = TweenService:Create(previous.frame,
+                TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                    GroupTransparency = 1,
+                    Position = UDim2.fromOffset(0, -5),
+                })
+            combat.exitTween:Play()
+            task.delay(0.16, function()
+                if combat.revision ~= revision then return end
+                previous.frame.Visible = false
+                previous.frame.GroupTransparency = 0
+                previous.frame.Position = UDim2.fromOffset(0, 0)
+            end)
+        elseif previous and previous ~= view then
+            previous.frame.Visible = false
+        end
+        view.frame.Visible = true
+        view.frame.ZIndex = 2
+        view.frame.GroupTransparency = instant and 0 or 1
+        view.frame.Position = UDim2.fromOffset(0, instant and 0 or 10)
         for viewName, button in pairs(combat.buttons) do
-            button.BackgroundColor3 = viewName == name and INPUT or BAR
-            button.TextColor3 = viewName == name and WHITE or MUTED
-            button.Font = viewName == name and Enum.Font.GothamBold or Enum.Font.GothamMedium
+            local chosen = viewName == name
+            if instant then
+                button.BackgroundColor3 = chosen and INPUT or BAR
+                button.TextColor3 = chosen and WHITE or MUTED
+            else
+                TweenService:Create(button,
+                    TweenInfo.new(0.20, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = chosen and INPUT or BAR,
+                        TextColor3 = chosen and WHITE or MUTED,
+                    }):Play()
+            end
+            button.Font = chosen and Enum.Font.GothamBold or Enum.Font.GothamMedium
         end
         if not instant then
-            view.frame.GroupTransparency = 1
-            view.frame.Position = UDim2.fromOffset(0, 8)
             combat.tween = TweenService:Create(view.frame,
-                TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                TweenInfo.new(0.29, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
                     GroupTransparency = 0,
                     Position = UDim2.fromOffset(0, 0),
                 })
@@ -997,11 +1115,24 @@ local function buildControls(content)
         txt.Position=UDim2.fromOffset(31,0)
         txt.Size=UDim2.new(1,-46,1,0)
         local rec=controlRecord(Toggles,id,info.Default or false)
+        local firstDraw = true
         rec.draw=function(v)
-            square.BackgroundColor3=v and Color3.fromRGB(255,255,255) or Color3.fromRGB(100,100,110)
-            square.TextColor3=Color3.fromRGB(20,20,24)
-            square.Text=""
-            txt.TextColor3=v and WHITE or MUTED
+            local squareColor = v and Color3.fromRGB(255,255,255) or Color3.fromRGB(100,100,110)
+            local labelColor = v and WHITE or MUTED
+            if firstDraw then
+                square.BackgroundColor3 = squareColor
+                txt.TextColor3 = labelColor
+                firstDraw = false
+            else
+                TweenService:Create(square,
+                    TweenInfo.new(0.17, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {BackgroundColor3 = squareColor}):Play()
+                TweenService:Create(txt,
+                    TweenInfo.new(0.17, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {TextColor3 = labelColor}):Play()
+            end
+            square.TextColor3 = Color3.fromRGB(20,20,24)
+            square.Text = ""
         end
         rec.draw(rec.Value)
         square.MouseButton1Click:Connect(function() rec:SetValue(not rec.Value) end)
@@ -1120,15 +1251,29 @@ local function buildControls(content)
         uiRound(knob,15)
         local minv,maxv=info.Min or 0,info.Max or 100
         local precision=10^(info.Rounding or 0)
+        local dragging = false
+        local firstDraw = true
         local rec=controlRecord(Options,id,info.Default or minv)
         rec.draw=function(v)
             local alpha=math.clamp((v-minv)/math.max(.0001,maxv-minv),0,1)
-            fill.Size=UDim2.fromScale(alpha,1)
-            knob.Position=UDim2.fromScale(alpha,.5)
+            local targetSize = UDim2.fromScale(alpha, 1)
+            local targetPosition = UDim2.fromScale(alpha, 0.5)
+            if dragging or firstDraw then
+                fill.Size = targetSize
+                knob.Position = targetPosition
+                firstDraw = false
+            else
+                -- Configuration/preset changes are eased; dragging remains direct and responsive.
+                TweenService:Create(fill,
+                    TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {Size = targetSize}):Play()
+                TweenService:Create(knob,
+                    TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {Position = targetPosition}):Play()
+            end
             number.Text=tostring(v)
         end
         rec.draw(rec.Value)
-        local dragging=false
         local function move(x)
             local alpha=math.clamp((x-track.AbsolutePosition.X)/math.max(1,track.AbsoluteSize.X),0,1)
             rec:SetValue(math.floor((minv+alpha*(maxv-minv))*precision+.5)/precision)
@@ -2471,7 +2616,8 @@ UserInputService.InputEnded:Connect(function(input)
 
 end)
 
-local MainBOX = GeneralTab:AddLeftTabbox("Main") do
+;(function()
+    local MainBOX = GeneralTab:AddLeftTabbox("Main") do
 
     local Main = MainBOX:AddTab("Main")
 
@@ -2605,6 +2751,9 @@ local MainBOX = GeneralTab:AddLeftTabbox("Main") do
 
 end
 
+end)() -- Silent Aim controls in their own function scope
+
+;(function()
 -- Trigger Bot with independent keybind and Toggle / Hold / Always modes.
 local TriggerBotSettings = {
     Enabled = false,
@@ -2749,6 +2898,8 @@ RunService.RenderStepped:Connect(function()
         task.defer(mouse1release)
     end
 end)
+
+end)() -- Trigger Bot isolated to keep main-chunk register usage low
 
 -- Hitbox Expander adapted from the supplied Specter script.
 -- Kept inside a function scope to avoid Luau's top-level register limit.
@@ -3051,6 +3202,8 @@ end)
     end)
 end)()
 
+;(function()
+-- Prediction / FOV controls and ConfigManager UI are constructed in a separate scope.
 -- Prediction on the right side of General.
 local PredictionBOX = GeneralTab:AddRightTabbox("Prediction") do
     local PredictionTab = PredictionBOX:AddTab("Prediction")
@@ -3140,6 +3293,8 @@ local LoadConfigurationBOX = ConfigTab:AddRightTabbox("Load Configuration") do
     end)
     Main:AddButton("Refresh Config List", RefreshConfigDropdowns)
 end
+
+end)() -- End of scoped Prediction / FOV / ConfigManager controls
 
 resume(create(function()
 
@@ -3304,5 +3459,33 @@ end))
     end)()
 end
 
--- Play the intro after all controls have been constructed.
-animateMenu(true, true)
+-- Startup intro: softly reveal the header, then gently bring up its content.
+-- Reopening the menu uses animateMenu instead of replaying the intro.
+;(function()
+    local introViewport = frame:FindFirstChild("SpaceSolutionIntroViewport")
+    local introBody = introViewport and introViewport:FindFirstChild("SpaceSolutionIntroBody")
+    if introBody then
+        frame:SetAttribute("SpaceSolutionIntroInterrupted", false)
+        ui.Enabled = true
+        frame.Visible = true
+        frame.Size = UDim2.fromOffset(862, 524)
+        frame.Position = UDim2.fromScale(0.5, 0.5)
+        frame.GroupTransparency = 1
+        introBody.Position = UDim2.fromOffset(0, 96)
+        introBody.GroupTransparency = 1
+        TweenService:Create(frame,
+            TweenInfo.new(0.42, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+            {GroupTransparency = 0}
+        ):Play()
+        task.delay(0.44, function()
+            if not ui.Parent or not menuOpen
+                or frame:GetAttribute("SpaceSolutionIntroInterrupted") then return end
+            TweenService:Create(introBody,
+                TweenInfo.new(0.68, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+                {Position = UDim2.fromOffset(0, 0), GroupTransparency = 0}
+            ):Play()
+        end)
+    else
+        animateMenu(true, true)
+    end
+end)()
