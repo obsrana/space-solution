@@ -637,6 +637,7 @@ local links = {}
 local linkLabels = {}
 -- Sidebar icons bundled directly in this Lua file.
 local sidebarIconPNGs = {
+    ["Misc"] = [[iVBORw0KGgoAAAANSUhEUgAAACgAAAApCAYAAABHomvIAAAB1UlEQVR42u3YT4tOcRjG8c9jJqNRRkSMBVGkRFKzmGIjylDY2IuNbLwL5QVYWFhKNt7ASFYkkg02NpqS0ZhJmMYYl82Phvx5/hzneRbPVb/O5v6d8z3n3Pd13+c0kuhlrdDj6gP2AbutwQ73r8cB7MUIZjGFu3hbCWGSdtfWJFeSTOVnLSS5luRgB+f+sdrduCnJ9fxdk0mOdQrY7is+irP/iDmM13iImTqLZCNONxk7gbG6q3g7xpuMXYfddQOuxVAL8UN1A77DdJOx83hTN+BT3G8y9jke1A24gFuYayL2Jp51y6gvJZn9gwcuJrlc/LIrRv19nUpyO8ncMrAnSS4kGa6ikzQqmqhHS7rM40NJg0rU6PWRv51WN4wjpUPswGYMYAlfy3EOr/C4rBd1Fcn+kvzv07wmk5ypo0jGkjxKe5pJcvF/Au5Mci+daSrJ8VYBmzXqkzjUYb5vwfkyDVXaSUZwrqKinMCJqgHHsasiwJXYg1VVAm6o2NpGW7G3bnx2DlX9ipcqBlwohl5ZJ7mDq9hXcugzVpcLDaKxrIv87sZXlE6ziJe4gU9V9+IBbMMafCyACiykAC4Ha/xSHF/KdD3dyuNu9P8P9gH7gH3APmBv6xsjtdJpLaw9SQAAAABJRU5ErkJggg==]],
     ["Walka"] = [[iVBORw0KGgoAAAANSUhEUgAAABQAAAAVCAYAAABG1c6oAAAB4klEQVR4nI2UO2hUURCGv10NWaKLNiIbQiwMWBgEC4OIggQCYmeQiI2SRixtBEGClYW9CIIEEkhhYyeCoIWVWpjGQhFE8AESxUeIJPj4LO6sjMvduztw4My9//wzZ141lT5kAmgBj4GPlUi11xlV76vf1ctqswpfq4hwP3AcOAwci28/gQXgHvAI+NRPhNvUWfWF1TKvHui0LyO70oMoyzP1UDfCunpGXUsGN9UZ9XXod8Lhm4S5rbbKCFvq0wSci4hRT6hX1YPqgDqlLifsdBnh0QSYV4ftUsk40+qvwN9QB1XqUZsx4Hyq1ZeO2g0Du4GBXE/gW9yngSlgAHVcfV6S8Hl1e+R2KfI2E9GdUldLbE7Xgd/Aj5I+3IgoAGrAJuBP6ENdenejXd1J9UHytKDuTfnaY9EeW0PfoV5M+DX1gtrcHF4fAiPAZHha5f+ZfdkRyQrwDlgHGmG/CKzWE+h9uu8CtiS9HifLSJABfKadtvSsUfVJesac2oh/Z9VrFqM2GCl6lbCzlvRh23A9Aa+rJ9W3KbeX1A8Js6Tu7EbY6Eh2L7mr7sscZRPQtJjp5R5kt9SJTvuq0RpXz8WT2vLVYskescui7WdjD1psmRWLXhuqwldt7CxjQDP6sWyq/slfutHhaaNLGNgAAAAASUVORK5CYII=]],
     ["Visuals"] = [[iVBORw0KGgoAAAANSUhEUgAAAB0AAAAeCAYAAADQBxWhAAAB4klEQVR42u2WPWsVURCGn9Vg0KtiuKAEhPiBiIhY+NUEES1sLESChQhCCIiIP8HCWjBYhBR2ARG0C5hKIlgE0djEzhDEQqIEYuEXIvjYHOF6mb17NiERIS8sLLMz83J2Zt4zhcpqYx3/AGukK4qumv49wDZgM9ANfAW+AIvpPQ9qztOtnlZvqwv+jc/qqNqfmSuL9KQ6bh4m1OPq+uWQXla/Wx+D6sayvEUHcRgC7gX2N8Ak8AHYDZwBdgZ+V4Cx3JoW6rmSE9xUt6Qa96c/cV4dLvEfyP29B9T5IMGtFp+G+izZ59QhdSSIWVAPVpE21btB8Cd1X4vfkaCBBtSfQexIe32jTo0wrvaofclnIvC5oT4P7D/Uw608XZli8Q3YDzwqaRqADckvsjc6yeBbYCYI3ANs70C4CHxM3dyOGeB9FelwEHgM2ApcLSG9k060K/g2AryrGpmm+jCozaS6Q72oPlFnU20vpDq/DmLG0nhlKdIh9VWQZE69pB5Nc3pKvZ66ux1Tam9dGSwj/iPy8yUjojqt7l2q9l5zaRjslLfqEn8BPKh5594Hni73Pm2mOk5XnG4qyWFvVc6ixgraAM4CJ4A+YBPwC5gFHgMvc7eHoubeWwCu9mLmf7sNrpGuKH4DXbLYA++4VvEAAAAASUVORK5CYII=]],
     ["List"] = [[iVBORw0KGgoAAAANSUhEUgAAABUAAAAUCAYAAABiS3YzAAACOUlEQVR4nH3Uy4uOYRgG8N98M2MYx+QQTRQJ2SihFKmxoJSdsrUTOyws5FBiN9nZYSF/gCIhFkLKMafkbBAxDuPw6WNui+d5zeudb1z1Lu7ree/rfu7T0xIR/oNOfMd0LMYL3EF75puibRh+IVagH0+wERtwDQdysGm4gktDvCOi/E2IiM0RcS8ifkfE/ojoiX9xIiL2RsSXiHgZEZuy31+dsuDEiNhVcv6YAzyPodgZEQ9K9vaIGFNo1fKFW7EOu0tJnMckzGhSnkm4XrJ3Y3VhFKJLsb3ieAszh6n5Anwr2Z3YjC4GG/VZKvobBB7iNGZhPCbiZ/73dz57nv2WoI4bWVxbTmU5evPXwO0coCun2ZGzas2idTzGAL7mYA3MRa+IWBkR3yqNuBAR63N3h8PeiLhc4a5GxMKaNMidlZqNw9iiRsOgHVMr3DxMrmFkE4dWtPxHsBCtV7gGGjV8wtvKYS/6pIY1QwMf8a7Cv0BfG+5iD9bkg184h0c4jFX4ITWoJjXnPi5Ka/wjc3Wcwv1avtEFvMopjZNGqR1P8UGq+ViMlkrTL5VtCkZJ0/EYl9Eo5rQPc9Cd7W68luZzfZP065jg34X5ivcMbtRbHKs4Lje0EQV6Mb/Cncg6f0XhKLaW7O4cub+J6CMpswL7cLwwyqIDOIQtUuod0ooeqQiexGRpRgewAweVHu2WGPryt2OZwZ2+jW1Yi5voycG6cBZnqgLNRAt0SB1/j9lYhGfS6zUiB+9r5vgHX5tdhF3e0gYAAAAASUVORK5CYII=]],
@@ -656,7 +657,7 @@ sidebarIconPNGs = nil
 
 local navDefs = {
     {"Walka", "+"}, {"Visuals", "O"},
-    {"List", "@"}, {"Ustawienia", "#"}
+    {"Misc", "*"}, {"List", "@"}, {"Ustawienia", "#"}
 }
 local selectedPage = "Walka"
 local pageTween, pageOutTween = nil, nil
@@ -762,6 +763,7 @@ end
 local pages = {
     Walka = createPage("Walka"),
     Visuals = createPage("Visuals", 0.52),
+    Misc = createPage("Misc"),
     List = createPage("List"),
     ["Ustawienia"] = createPage("Ustawienia"),
 }
@@ -907,7 +909,8 @@ for i, item in ipairs(navDefs) do
     local b = uiButton(side, "", key == selectedPage and INPUT or BAR)
     b.Size = UDim2.new(1, 0, 0, 46)
     b.Position = UDim2.fromOffset(0, (i-1)*54)
-    local iconText = uiText(b, "", 22, key == selectedPage and WHITE or MUTED)
+    local iconText = uiText(b, "", 22,
+        key == selectedPage and WHITE or MUTED)
     iconText.Size = UDim2.fromOffset(36, 40)
     iconText.Position = UDim2.fromOffset(12, 3)
     iconText.TextXAlignment = Enum.TextXAlignment.Center
@@ -1166,6 +1169,7 @@ local function buildControls(content)
         rec.draw=function(v) b.Text=tostring(v) end
         b.MouseButton1Click:Connect(function()
             closePopup()
+            headerTop.capturingBind = true
             b.Text="Press a key..."
             local listener
             listener=UserInputService.InputBegan:Connect(function(inp)
@@ -1177,6 +1181,7 @@ local function buildControls(content)
                     local key = inp.UserInputType==Enum.UserInputType.Keyboard
                         and inp.KeyCode.Name or inp.UserInputType.Name
                     rec:SetValue(key)
+                    task.defer(function() headerTop.capturingBind = false end)
                 end
             end)
         end)
@@ -1326,6 +1331,220 @@ local function buildControls(content)
     return controls
 end
 
+-- Misc movement tools, adapted from the supplied Specter Lua script.
+-- Isolated function scope prevents exceeding Luau's local-register limit.
+;(function()
+    local state = {
+        Fly = false, FlySpeed = 1, FlyKey = "p",
+        Noclip = false, Speed = false, SpeedMultiplier = 2,
+        NoclipOriginal = {},
+        FlyForce = nil, FlyRoot = nil, FlyHumanoid = nil,
+        SpeedHumanoid = nil, NormalWalkSpeed = nil,
+        Unloaded = false,
+    }
+
+    local function disableFly()
+        if state.FlyForce then
+            state.FlyForce:Destroy()
+            state.FlyForce = nil
+        end
+        if state.FlyHumanoid and state.FlyHumanoid.Parent
+            and state.FlyHumanoid.Health > 0 then
+            pcall(function()
+                state.FlyHumanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+            end)
+        end
+        state.FlyRoot = nil
+        state.FlyHumanoid = nil
+    end
+
+    local function disableSpeed()
+        if state.SpeedHumanoid and state.SpeedHumanoid.Parent
+            and state.NormalWalkSpeed then
+            pcall(function()
+                state.SpeedHumanoid.WalkSpeed = state.NormalWalkSpeed
+            end)
+        end
+        state.SpeedHumanoid = nil
+        state.NormalWalkSpeed = nil
+    end
+
+    local function restoreCollision()
+        for part, canCollide in pairs(state.NoclipOriginal) do
+            if part and part.Parent then
+                pcall(function() part.CanCollide = canCollide end)
+            end
+        end
+        table.clear(state.NoclipOriginal)
+    end
+
+    -- UI layout matches the current SpaceSolution style and config registry.
+    local noclip = buildControls(makePanel("Noclip", pages.Misc.columns[1]))
+    noclip:AddToggle("MiscNoclip", {
+        Text = "Noclip Enabled", Default = false
+    }):OnChanged(function()
+        state.Noclip = Toggles.MiscNoclip.Value
+        if not state.Noclip then restoreCollision() end
+    end)
+
+    local speed = buildControls(makePanel("Speed", pages.Misc.columns[1]))
+    speed:AddToggle("MiscSpeed", {
+        Text = "Speed Enabled", Default = false
+    }):OnChanged(function()
+        state.Speed = Toggles.MiscSpeed.Value
+        if not state.Speed then disableSpeed() end
+    end)
+    speed:AddSlider("MiscSpeedMultiplier", {
+        Text = "Speed Multiplier", Min = 1, Max = 10,
+        Default = 2, Rounding = 1
+    }):OnChanged(function()
+        state.SpeedMultiplier = math.clamp(
+            tonumber(Options.MiscSpeedMultiplier.Value) or 2, 1, 10)
+    end)
+
+    local fly = buildControls(makePanel("Fly", pages.Misc.columns[2]))
+    fly:AddToggle("MiscFly", {
+        Text = "Fly Enabled", Default = false
+    }):OnChanged(function()
+        state.Fly = Toggles.MiscFly.Value
+        if not state.Fly then disableFly() end
+    end)
+    fly:AddSlider("MiscFlySpeed", {
+        Text = "Fly Speed", Min = 1, Max = 10,
+        Default = 1, Rounding = 1
+    }):OnChanged(function()
+        state.FlySpeed = math.clamp(
+            tonumber(Options.MiscFlySpeed.Value) or 1, 1, 10)
+    end)
+    fly:AddKeyPicker("MiscFlyKey", {
+        Text = "Fly Key", Default = "p"
+    }):OnChanged(function()
+        state.FlyKey = tostring(Options.MiscFlyKey.Value or "F")
+    end)
+    fly:AddLabel("WASD: Move  |  Space: Up  |  Shift: Down")
+
+    -- The bind toggles the same GUI record used by the config system.
+    local keyConnection = UserInputService.InputBegan:Connect(function(input, processed)
+        if state.Unloaded or processed or headerTop.capturingBind then return end
+        if UserInputService:GetFocusedTextBox() then return end
+        local key = state.FlyKey
+        if input.KeyCode.Name == key or input.UserInputType.Name == key then
+            Toggles.MiscFly:SetValue(not Toggles.MiscFly.Value)
+        end
+    end)
+
+    -- Fly control: source uses camera-relative WASD and a 30*speed factor.
+    -- A BodyVelocity provides stable hovering between frames.
+    local flyConnection = RunService.Heartbeat:Connect(function()
+        if state.Unloaded then return end
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not state.Fly or not root or not humanoid or humanoid.Health <= 0 then
+            if state.FlyForce then disableFly() end
+            return
+        end
+
+        if state.FlyRoot ~= root or not state.FlyForce
+            or state.FlyForce.Parent ~= root then
+            disableFly()
+            local mover = Instance.new("BodyVelocity")
+            mover.Name = "SpaceSolutionFlyVelocity"
+            mover.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+            mover.P = 15000
+            mover.Velocity = Vector3.zero
+            mover.Parent = root
+            state.FlyForce = mover
+            state.FlyRoot = root
+            state.FlyHumanoid = humanoid
+        end
+
+        if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
+            humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+        end
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        local direction = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            direction += camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            direction -= camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            direction -= camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            direction += camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            direction += Vector3.yAxis
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            direction -= Vector3.yAxis
+        end
+        state.FlyForce.Velocity = (direction.Magnitude > 0
+            and direction.Unit or Vector3.zero) * (state.FlySpeed * 30)
+    end)
+
+    -- Same WalkSpeed multiplier and movement boost as the source script.
+    local speedConnection = RunService.Stepped:Connect(function()
+        if state.Unloaded then return end
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not state.Speed or state.Fly or not humanoid or humanoid.Health <= 0 then
+            if state.SpeedHumanoid then disableSpeed() end
+            return
+        end
+        if state.SpeedHumanoid ~= humanoid then
+            disableSpeed()
+            state.SpeedHumanoid = humanoid
+            state.NormalWalkSpeed = humanoid.WalkSpeed
+        end
+        humanoid.WalkSpeed = (state.NormalWalkSpeed or 16) * state.SpeedMultiplier
+        if root and humanoid.MoveDirection.Magnitude > 0 then
+            local boost = (state.SpeedMultiplier - 1) * 0.28
+            if boost > 0 then
+                root.CFrame += humanoid.MoveDirection * boost
+            end
+        end
+    end)
+
+    -- Restore each body's original CanCollide value after Noclip is disabled.
+    local noclipConnection = RunService.Stepped:Connect(function()
+        if state.Unloaded or not state.Noclip then return end
+        local character = LocalPlayer.Character
+        if not character then return end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if state.NoclipOriginal[part] == nil then
+                    state.NoclipOriginal[part] = part.CanCollide
+                end
+                part.CanCollide = false
+            end
+        end
+    end)
+
+    local characterConnection = LocalPlayer.CharacterAdded:Connect(function()
+        disableFly()
+        disableSpeed()
+        restoreCollision()
+    end)
+
+    ui.Destroying:Connect(function()
+        state.Unloaded = true
+        keyConnection:Disconnect()
+        flyConnection:Disconnect()
+        speedConnection:Disconnect()
+        noclipConnection:Disconnect()
+        characterConnection:Disconnect()
+        disableFly()
+        disableSpeed()
+        restoreCollision()
+    end)
+end)()
+
 -- Settings page: Globals on the left, ConfigManager on the right.
 local menuKey = Enum.KeyCode.Delete
 local panicKey = nil
@@ -1357,6 +1576,28 @@ local watermarkLine = uiCreate("Frame", {
 Toggles.WaterMark:OnChanged(function()
     watermarkBar.Visible = Toggles.WaterMark.Value
 end)
+-- Choose the watermark's horizontal alignment at the top of the screen.
+-- ConfigManager saves WatermarkPosition automatically through Options.
+do
+    local positions = {
+        Left = UDim2.new(0, 12, 0, 12),
+        Center = UDim2.new(0.5, -140, 0, 12),
+        Right = UDim2.new(1, -292, 0, 12),
+    }
+    local positionTween = nil
+    globalsControls:AddDropdown("WatermarkPosition", {
+        Text = "Watermark Position",
+        Values = {"Left", "Center", "Right"},
+        Default = "Right",
+    }):OnChanged(function()
+        local position = positions[Options.WatermarkPosition.Value] or positions.Right
+        if positionTween then positionTween:Cancel() end
+        positionTween = TweenService:Create(watermarkBar,
+            TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+            {Position = position})
+        positionTween:Play()
+    end)
+end
 -- Reconnect to the current server (or rejoin the same place if needed).
 globalsControls:AddButton("Reconnect", function()
     local TeleportService = game:GetService("TeleportService")
