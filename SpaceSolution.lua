@@ -108,7 +108,7 @@ fov_circle.ZIndex = 999
 
 fov_circle.Transparency = 1
 
-fov_circle.Color = Color3.fromRGB(54, 57, 241)
+fov_circle.Color = Color3.fromRGB(255, 255, 255)
 
 local ExpectedArguments = {
 
@@ -679,6 +679,111 @@ local pages = {
     List = createPage("List"),
     ["Ustawienia"] = createPage("Ustawienia"),
 }
+-- Combat header subtabs: Silent | Trigger | Hitbox.
+-- Each subtab owns its own scroll panels; no gameplay state is reset on switching.
+do
+    local combat = {active = "Silent", views = {}, buttons = {}, tween = nil}
+    local combatParent = pages.Walka.frame
+
+    -- Keep the original Combat columns and their controls for Silent Aim.
+    local silentFrame = uiCreate("CanvasGroup", {
+        Name = "CombatSilent", Size = UDim2.fromScale(1, 1),
+        Position = UDim2.fromOffset(0, 0),
+        BackgroundTransparency = 1, Visible = true
+    }, combatParent)
+    for _, scrollingColumn in ipairs(pages.Walka.columns) do
+        scrollingColumn.Parent = silentFrame
+    end
+    combat.views.Silent = {frame = silentFrame, columns = pages.Walka.columns}
+
+    local function createCombatSubtab(name)
+        local subFrame = uiCreate("CanvasGroup", {
+            Name = "Combat" .. name,
+            Size = UDim2.fromScale(1, 1),
+            Position = UDim2.fromOffset(0, 0),
+            BackgroundTransparency = 1, Visible = false,
+        }, combatParent)
+        local columns = {}
+        for index = 1, 2 do
+            local column = uiCreate("ScrollingFrame", {
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                ScrollBarThickness = 2,
+                ScrollBarImageColor3 = ACCENT,
+                Position = UDim2.new((index - 1) * 0.5, index == 1 and 0 or 6, 0, 0),
+                Size = UDim2.new(0.5, -8, 1, 0),
+                CanvasSize = UDim2.fromOffset(0, 0),
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                ScrollingDirection = Enum.ScrollingDirection.Y,
+            }, subFrame)
+            uiCreate("UIListLayout", {
+                FillDirection = Enum.FillDirection.Vertical,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Padding = UDim.new(0, 11),
+            }, column)
+            columns[index] = column
+        end
+        return {frame = subFrame, columns = columns}
+    end
+
+    combat.views.Trigger = createCombatSubtab("Trigger")
+    combat.views.Hitbox = createCombatSubtab("Hitbox")
+
+    local function switchCombatTab(name, instant)
+        local view = combat.views[name]
+        if not view then return end
+        if name == combat.active and not instant then
+            if selectedPage ~= "Walka" then showPage("Walka") end
+            return
+        end
+        if combat.tween then
+            combat.tween:Cancel()
+            combat.tween = nil
+        end
+        combat.active = name
+        for viewName, entry in pairs(combat.views) do
+            entry.frame.Visible = viewName == name
+            entry.frame.GroupTransparency = 0
+            entry.frame.Position = UDim2.fromOffset(0, 0)
+        end
+        for viewName, button in pairs(combat.buttons) do
+            button.BackgroundColor3 = viewName == name and INPUT or BAR
+            button.TextColor3 = viewName == name and WHITE or MUTED
+            button.Font = viewName == name and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        end
+        if not instant then
+            view.frame.GroupTransparency = 1
+            view.frame.Position = UDim2.fromOffset(0, 8)
+            combat.tween = TweenService:Create(view.frame,
+                TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    GroupTransparency = 0,
+                    Position = UDim2.fromOffset(0, 0),
+                })
+            combat.tween:Play()
+        end
+        if selectedPage ~= "Walka" then showPage("Walka") end
+    end
+
+    for index, name in ipairs({"Silent", "Trigger", "Hitbox"}) do
+        local tabButton = uiButton(header, name, BAR)
+        tabButton.Name = "CombatTab" .. name
+        tabButton.Size = UDim2.fromOffset(108, 34)
+        tabButton.Position = UDim2.fromOffset(474 + (index - 1) * 115, 11)
+        tabButton.TextSize = 12
+        combat.buttons[name] = tabButton
+        tabButton.MouseButton1Click:Connect(function()
+            switchCombatTab(name, false)
+        end)
+    end
+
+    headerTop.combatColumns = {
+        Silent = combat.views.Silent.columns,
+        Trigger = combat.views.Trigger.columns,
+        Hitbox = combat.views.Hitbox.columns,
+    }
+    headerTop.showCombatSubtab = switchCombatTab
+    switchCombatTab("Silent", true)
+end
 for i, item in ipairs(navDefs) do
     local key = item[1]
     local b = uiButton(side, "", key == selectedPage and INPUT or BAR)
@@ -1153,8 +1258,19 @@ function Library:CreateWindow(_)
         local tab = {}
         function tab:_box(title, column)
             local target=mapped
-            -- Prediction stays on the right side of Walka.
+            -- Route Combat panels to the correct header subtab.
             local col=pages[target].columns[column]
+            if name == "General" and headerTop.combatColumns then
+                if title == "Trigger Bot" then
+                    col = headerTop.combatColumns.Trigger[1]
+                elseif title == "Hitbox Expander" then
+                    col = headerTop.combatColumns.Hitbox[1]
+                elseif title == "Hitbox Preview" then
+                    col = headerTop.combatColumns.Hitbox[2]
+                else
+                    col = headerTop.combatColumns.Silent[column]
+                end
+            end
             local displayName = title
             if name=="General" and title=="Main" then displayName="Silent Aim" end
             if name=="General" and title=="Visuals" then displayName="FOV Settings" end
@@ -2492,9 +2608,11 @@ end
 -- Trigger Bot with independent keybind and Toggle / Hold / Always modes.
 local TriggerBotSettings = {
     Enabled = false,
-    TeamCheck = true,
+    TeamCheck = false,
     Delay = 0.12,
     ToggleKey = "T",
+    TargetHead = false,
+    TargetBody = false,
 }
 local triggerLastShot = 0
 local triggerKeyHeld = false
@@ -2539,7 +2657,11 @@ local function triggerTargetValid()
     if not player or player == LocalPlayer then return false end
     if TriggerBotSettings.TeamCheck and player.Team ~= nil
         and player.Team == LocalPlayer.Team then return false end
-    return true
+    -- Head and body are independent trigger zones.
+    if part.Name == "Head" then
+        return TriggerBotSettings.TargetHead
+    end
+    return TriggerBotSettings.TargetBody
 end
 
 local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
@@ -2573,9 +2695,19 @@ local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
         syncTriggerEnabled()
     end)
     Trigger:AddToggle("TriggerTeamCheck", {
-        Text = "Trigger Team Check", Default = true
+        Text = "Trigger Team Check", Default = false
     }):OnChanged(function()
         TriggerBotSettings.TeamCheck = Toggles.TriggerTeamCheck.Value
+    end)
+    Trigger:AddToggle("TriggerTargetHead", {
+        Text = "Target Head", Default = false
+    }):OnChanged(function()
+        TriggerBotSettings.TargetHead = Toggles.TriggerTargetHead.Value
+    end)
+    Trigger:AddToggle("TriggerTargetBody", {
+        Text = "Target Body", Default = false
+    }):OnChanged(function()
+        TriggerBotSettings.TargetBody = Toggles.TriggerTargetBody.Value
     end)
     Trigger:AddSlider("TriggerDelay", {
         Text = "Trigger Delay (seconds)", Min = 0.05, Max = 1,
@@ -2618,6 +2750,307 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- Hitbox Expander adapted from the supplied Specter script.
+-- Kept inside a function scope to avoid Luau's top-level register limit.
+-- The leading semicolon separates this IIFE from the preceding Connect(...) call.
+;(function()
+    local hitboxConfig = {
+        Enabled = false,
+        Invisible = false,
+        Size = 5
+    }
+    local originalHeads = {}
+
+    local function saveHead(head)
+        local original = originalHeads[head]
+        if original then return original end
+        original = {
+            Size = head.Size,
+            Transparency = head.Transparency,
+            Material = head.Material,
+            Color = head.Color,
+            CanCollide = head.CanCollide,
+            Children = {}
+        }
+        originalHeads[head] = original
+        return original
+    end
+
+    local function saveChild(original, child)
+        if original.Children[child] then return original.Children[child] end
+        local state
+        if child:IsA("Decal") or child:IsA("Texture") then
+            state = {Kind = "Transparency", Value = child.Transparency}
+        elseif child:IsA("SpecialMesh") then
+            state = {Kind = "Scale", Value = child.Scale}
+        elseif child:IsA("BillboardGui") or child:IsA("SurfaceGui") then
+            state = {Kind = "Enabled", Value = child.Enabled}
+        end
+        if state then original.Children[child] = state end
+        return state
+    end
+
+    local function restoreHead(head, original)
+        if not head or not head.Parent then return end
+        pcall(function()
+            head.Size = original.Size
+            head.Transparency = original.Transparency
+            head.Material = original.Material
+            head.Color = original.Color
+            head.CanCollide = original.CanCollide
+        end)
+        for child, originalState in pairs(original.Children) do
+            if child.Parent then
+                pcall(function()
+                    child[originalState.Kind] = originalState.Value
+                end)
+            end
+        end
+    end
+
+    local function restoreAll()
+        for head, original in pairs(originalHeads) do
+            restoreHead(head, original)
+            originalHeads[head] = nil
+        end
+    end
+
+    local function applyToHead(head)
+        local original = saveHead(head)
+        local size = hitboxConfig.Size
+        pcall(function()
+            head.Size = Vector3.new(size, size, size)
+            head.CanCollide = false
+            if hitboxConfig.Invisible then
+                head.Transparency = 1
+                head.Material = Enum.Material.Plastic
+            else
+                head.Transparency = 0.65
+                head.Material = Enum.Material.ForceField
+                head.Color = Color3.fromRGB(255, 50, 50)
+            end
+        end)
+
+        -- Hide decals/meshes along with the head; restore their original
+        -- values when "Invisible Hitbox" or the expander is switched off.
+        for _, child in ipairs(head:GetChildren()) do
+            local originalChild = saveChild(original, child)
+            if originalChild then
+                pcall(function()
+                    if originalChild.Kind == "Transparency" then
+                        child.Transparency = hitboxConfig.Invisible and 1 or originalChild.Value
+                    elseif originalChild.Kind == "Scale" then
+                        child.Scale = hitboxConfig.Invisible
+                            and Vector3.new(0, 0, 0) or originalChild.Value
+                    elseif originalChild.Kind == "Enabled" then
+                        child.Enabled = not hitboxConfig.Invisible and originalChild.Value
+                    end
+                end)
+            end
+        end
+    end
+
+    local function updateHitboxes()
+        if not hitboxConfig.Enabled then return end
+        local activeHeads = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local character = player.Character
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                local head = character:FindFirstChild("Head")
+                if humanoid and humanoid.Health > 0 and head and head:IsA("BasePart") then
+                    activeHeads[head] = true
+                    applyToHead(head)
+                end
+            end
+        end
+        -- Also handle respawns, dead characters and players leaving the server.
+        for head, original in pairs(originalHeads) do
+            if not activeHeads[head] then
+                restoreHead(head, original)
+                originalHeads[head] = nil
+            end
+        end
+    end
+
+    -- Live 3D preview inside Combat > Hitbox (the right column).
+    -- The mannequin exists only in a ViewportFrame; it never edits game characters.
+    local hitboxPreviewBox = GeneralTab:AddRightTabbox("Hitbox Preview")
+    local hitboxPreviewTab = hitboxPreviewBox:AddTab("Preview")
+    local hitboxPreviewHost = uiCreate("Frame", {
+        Name = "HitboxPreviewHost", Size = UDim2.new(1, -2, 0, 299),
+        BackgroundColor3 = Color3.fromRGB(16, 17, 23),
+        BorderSizePixel = 0, ClipsDescendants = true
+    }, hitboxPreviewTab.Container)
+    uiRound(hitboxPreviewHost, 9)
+
+    local hitboxPreviewViewport = uiCreate("ViewportFrame", {
+        Name = "HitboxViewport", Position = UDim2.fromOffset(7, 7),
+        Size = UDim2.new(1, -14, 0, 237),
+        BackgroundColor3 = Color3.fromRGB(21, 22, 30),
+        BorderSizePixel = 0,
+        Ambient = Color3.fromRGB(172, 172, 183),
+        LightColor = Color3.fromRGB(255, 245, 241),
+        LightDirection = Vector3.new(-1, -1, -0.6)
+    }, hitboxPreviewHost)
+    uiRound(hitboxPreviewViewport, 7)
+    local hitboxPreviewWorld = Instance.new("WorldModel")
+    hitboxPreviewWorld.Parent = hitboxPreviewViewport
+    local hitboxPreviewCamera = Instance.new("Camera")
+    hitboxPreviewCamera.FieldOfView = 43
+    hitboxPreviewCamera.CFrame = CFrame.lookAt(
+        Vector3.new(9, 7, -18), Vector3.new(0, 3.55, 0))
+    hitboxPreviewCamera.Parent = hitboxPreviewViewport
+    hitboxPreviewViewport.CurrentCamera = hitboxPreviewCamera
+
+    local hitboxPreviewRig = Instance.new("Model")
+    hitboxPreviewRig.Name = "PreviewOnlyDummy"
+    hitboxPreviewRig.Parent = hitboxPreviewWorld
+    local function previewPart(name, size, position, color)
+        local part = Instance.new("Part")
+        part.Name = name
+        part.Anchored = true
+        part.CanCollide = false
+        part.CastShadow = false
+        part.Material = Enum.Material.SmoothPlastic
+        part.Color = color
+        part.Size = size
+        part.Position = position
+        part.Parent = hitboxPreviewRig
+        return part
+    end
+    local skin = Color3.fromRGB(250, 211, 70)
+    previewPart("LeftLeg", Vector3.new(1, 2, 1), Vector3.new(-0.51, 1.25, 0), Color3.fromRGB(66, 176, 91))
+    previewPart("RightLeg", Vector3.new(1, 2, 1), Vector3.new(0.51, 1.25, 0), Color3.fromRGB(66, 176, 91))
+    previewPart("Torso", Vector3.new(2, 2, 1), Vector3.new(0, 3.27, 0), Color3.fromRGB(59, 136, 237))
+    previewPart("LeftArm", Vector3.new(1, 2, 1), Vector3.new(-1.54, 3.27, 0), skin)
+    previewPart("RightArm", Vector3.new(1, 2, 1), Vector3.new(1.54, 3.27, 0), skin)
+    local normalHead = previewPart("Head", Vector3.new(2, 1, 1), Vector3.new(0, 4.8, 0), skin)
+    local face = Instance.new("Decal")
+    face.Name = "Face"
+    face.Texture = "rbxasset://textures/face.png"
+    face.Face = Enum.NormalId.Front
+    face.Parent = normalHead
+
+    local expandedHead = Instance.new("Part")
+    expandedHead.Name = "ExpandedHeadPreview"
+    expandedHead.Anchored = true
+    expandedHead.CanCollide = false
+    expandedHead.CastShadow = false
+    expandedHead.Material = Enum.Material.ForceField
+    expandedHead.Color = Color3.fromRGB(255, 75, 87)
+    expandedHead.Position = normalHead.Position
+    expandedHead.Parent = hitboxPreviewRig
+
+    -- Wire edges remain faintly visible in the preview while Invisible Hitbox
+    -- is enabled, so users can still see the size of the hidden volume.
+    local hitboxPreviewEdges = {}
+    for axis = 1, 3 do
+        for _, a in ipairs({-1, 1}) do
+            for _, b in ipairs({-1, 1}) do
+                local edge = Instance.new("Part")
+                edge.Name = "HitboxGuideEdge"
+                edge.Anchored = true
+                edge.CanCollide = false
+                edge.CastShadow = false
+                edge.Material = Enum.Material.Neon
+                edge.Color = Color3.fromRGB(250, 105, 115)
+                edge.Parent = hitboxPreviewRig
+                table.insert(hitboxPreviewEdges, {part = edge, axis = axis, a = a, b = b})
+            end
+        end
+    end
+
+    local hitboxPreviewInfo = uiText(hitboxPreviewHost, "Hitbox disabled", 11, WHITE, true)
+    hitboxPreviewInfo.Position = UDim2.fromOffset(10, 249)
+    hitboxPreviewInfo.Size = UDim2.new(1, -20, 0, 19)
+    hitboxPreviewInfo.TextXAlignment = Enum.TextXAlignment.Center
+    local hitboxPreviewHint = uiText(hitboxPreviewHost,
+        "Preview only - does not affect the game", 10, MUTED)
+    hitboxPreviewHint.Position = UDim2.fromOffset(8, 269)
+    hitboxPreviewHint.Size = UDim2.new(1, -16, 0, 19)
+    hitboxPreviewHint.TextXAlignment = Enum.TextXAlignment.Center
+
+    local function refreshHitboxPreview()
+        if not hitboxPreviewHost.Parent then return end
+        local size = math.clamp(tonumber(hitboxConfig.Size) or 5, 1, 6.35)
+        local half = size * 0.5
+        expandedHead.Size = Vector3.new(size, size, size)
+        expandedHead.Transparency = not hitboxConfig.Enabled and 1
+            or (hitboxConfig.Invisible and 1 or 0.76)
+        for _, edge in ipairs(hitboxPreviewEdges) do
+            local part = edge.part
+            local a, b = edge.a * half, edge.b * half
+            if edge.axis == 1 then
+                part.Size = Vector3.new(size, 0.047, 0.047)
+                part.Position = normalHead.Position + Vector3.new(0, a, b)
+            elseif edge.axis == 2 then
+                part.Size = Vector3.new(0.047, size, 0.047)
+                part.Position = normalHead.Position + Vector3.new(a, 0, b)
+            else
+                part.Size = Vector3.new(0.047, 0.047, size)
+                part.Position = normalHead.Position + Vector3.new(a, b, 0)
+            end
+            part.Transparency = not hitboxConfig.Enabled and 1
+                or (hitboxConfig.Invisible and 0.66 or 0.13)
+        end
+        if not hitboxConfig.Enabled then
+            hitboxPreviewInfo.Text = string.format("OFF  |  Size %.2f", size)
+        elseif hitboxConfig.Invisible then
+            hitboxPreviewInfo.Text = string.format("INVISIBLE  |  Size %.2f", size)
+        else
+            hitboxPreviewInfo.Text = string.format("VISIBLE  |  Size %.2f", size)
+        end
+    end
+    refreshHitboxPreview()
+
+    local hitboxBox = GeneralTab:AddRightTabbox("Hitbox Expander")
+    local hitboxControls = hitboxBox:AddTab("Hitbox Expander")
+    hitboxControls:AddToggle("HitboxExpanderEnabled", {
+        Text = "Hitbox Expander", Default = false
+    }):OnChanged(function()
+        hitboxConfig.Enabled = Toggles.HitboxExpanderEnabled.Value
+        if hitboxConfig.Enabled then
+            updateHitboxes()
+        else
+            restoreAll()
+        end
+        refreshHitboxPreview()
+    end)
+    hitboxControls:AddToggle("HitboxExpanderInvisible", {
+        Text = "Invisible Hitbox", Default = false
+    }):OnChanged(function()
+        hitboxConfig.Invisible = Toggles.HitboxExpanderInvisible.Value
+        updateHitboxes()
+        refreshHitboxPreview()
+    end)
+    hitboxControls:AddSlider("HitboxExpanderSize", {
+        Text = "Head Size", Min = 1, Max = 6.35, Default = 5, Rounding = 2
+    }):OnChanged(function()
+        hitboxConfig.Size = math.clamp(tonumber(Options.HitboxExpanderSize.Value) or 5, 1, 6.35)
+        updateHitboxes()
+        refreshHitboxPreview()
+    end)
+
+    local elapsed = 0
+    local heartbeatConnection
+    heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        elapsed = elapsed + deltaTime
+        if elapsed < 0.15 then return end
+        elapsed = 0
+        if not ui.Parent then
+            restoreAll()
+            heartbeatConnection:Disconnect()
+            return
+        end
+        updateHitboxes()
+    end)
+    ui.Destroying:Connect(function()
+        heartbeatConnection:Disconnect()
+        restoreAll()
+    end)
+end)()
+
 -- Prediction on the right side of General.
 local PredictionBOX = GeneralTab:AddRightTabbox("Prediction") do
     local PredictionTab = PredictionBOX:AddTab("Prediction")
@@ -2636,7 +3069,7 @@ end
 local VisualizeESPBOX = GeneralTab:AddLeftTabbox("Visuals") do
     local Visualize = VisualizeESPBOX:AddTab("Visuals")
 
-    Visualize:AddToggle("Visible", {Text = "Show FOV Circle"}):AddColorPicker("Color", {Default = Color3.fromRGB(54, 57, 241)}):OnChanged(function()
+    Visualize:AddToggle("Visible", {Text = "Show FOV Circle"}):AddColorPicker("Color", {Default = Color3.fromRGB(255, 255, 255)}):OnChanged(function()
         fov_circle.Visible = Toggles.Visible.Value
         SilentAimSettings.FOVVisible = Toggles.Visible.Value
     end)
