@@ -1576,27 +1576,63 @@ local watermarkLine = uiCreate("Frame", {
 Toggles.WaterMark:OnChanged(function()
     watermarkBar.Visible = Toggles.WaterMark.Value
 end)
--- Choose the watermark's horizontal alignment at the top of the screen.
--- ConfigManager saves WatermarkPosition automatically through Options.
+-- Custom username shown after "User -"; the SpaceSolution title stays fixed.
+-- Watermark User and Watermark Position are saved by ConfigManager.
+-- Keep this in a separate scope to avoid Luau's 200-local-register limit.
 do
-    local positions = {
-        Left = UDim2.new(0, 12, 0, 12),
-        Center = UDim2.new(0.5, -140, 0, 12),
-        Right = UDim2.new(1, -292, 0, 12),
-    }
     local positionTween = nil
+    local textService = game:GetService("TextService")
+
+    local function getWatermarkPosition()
+        local width = watermarkBar.Size.X.Offset
+        local choice = Options.WatermarkPosition and Options.WatermarkPosition.Value or "Right"
+        if choice == "Left" then
+            return UDim2.new(0, 12, 0, 12)
+        elseif choice == "Center" then
+            return UDim2.new(0.5, -width / 2, 0, 12)
+        end
+        return UDim2.new(1, -width - 12, 0, 12)
+    end
+
+    local function updateWatermarkUser()
+        local userName = Options.WatermarkUser and Options.WatermarkUser.Value or LocalPlayer.Name
+        userName = tostring(userName):gsub("[%c]", " "):match("^%s*(.-)%s*$")
+        if userName == "" then userName = LocalPlayer.Name end
+
+        watermark.Text = "SpaceSolution | User - " .. userName
+        watermark.TextTruncate = Enum.TextTruncate.AtEnd
+        local textWidth = textService:GetTextSize(
+            watermark.Text, 12, Enum.Font.GothamBold, Vector2.new(2000, 26)
+        ).X
+        local camera = workspace.CurrentCamera
+        local screenWidth = camera and camera.ViewportSize.X or 800
+        local maxWidth = math.max(120, math.min(560, screenWidth - 24))
+        local width = math.clamp(math.ceil(textWidth + 20), math.min(180, maxWidth), maxWidth)
+        watermarkBar.Size = UDim2.fromOffset(width, 26)
+
+        if positionTween then positionTween:Cancel() end
+        watermarkBar.Position = getWatermarkPosition()
+    end
+
+    globalsControls:AddInput("WatermarkUser", {
+        Text = "Watermark User",
+        Placeholder = "Enter the username to display",
+        Default = LocalPlayer.Name,
+    }):OnChanged(updateWatermarkUser)
+
     globalsControls:AddDropdown("WatermarkPosition", {
         Text = "Watermark Position",
         Values = {"Left", "Center", "Right"},
         Default = "Right",
     }):OnChanged(function()
-        local position = positions[Options.WatermarkPosition.Value] or positions.Right
         if positionTween then positionTween:Cancel() end
         positionTween = TweenService:Create(watermarkBar,
             TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-            {Position = position})
+            {Position = getWatermarkPosition()})
         positionTween:Play()
     end)
+
+    updateWatermarkUser()
 end
 -- Reconnect to the current server (or rejoin the same place if needed).
 globalsControls:AddButton("Reconnect", function()
@@ -1774,6 +1810,22 @@ ESPControls:AddSlider("TracerThickness", {Text = "Tracers Thickness", Default = 
 ESPControls:AddToggle("NameESPEnabled", {Text = "Name ESP", Default = false}):AddColorPicker("NameESPColor", {Default = Color3.fromRGB(255,255,255), Title = "Name Color"})
 
 ESPControls:AddDropdown("ESPNameType", {Text = "Name Type", Default = "Display Name", Values = {"Display Name", "Username"}, AllowNull = false})
+
+-- Separate distance overlay; uses real-world metres (1 Roblox stud = 0.28 m).
+ESPControls:AddToggle("DistanceESPEnabled", {Text = "Distance ESP", Default = false}):AddColorPicker("DistanceESPColor", {Default = Color3.fromRGB(255,255,255), Title = "Distance Color"})
+
+ESPControls:AddDropdown("ESPDistancePosition", {
+    Text = "Distance Position",
+    Default = "Top",
+    Values = {"Top", "Bottom", "Right", "Left"},
+    AllowNull = false
+})
+
+-- Controls the actual in-game Drawing labels, not just the ESP Preview.
+ESPControls:AddSlider("ESPTextSize", {
+    Text = "ESP Text Size (in game)", Default = 15,
+    Min = 12, Max = 22, Rounding = 0
+})
 
 ESPControls:AddToggle("ESPTeamCheck", {Text = "Team Check", Default = false})
 
@@ -2112,11 +2164,25 @@ previewName.Position = UDim2.fromOffset(7, 2)
 previewName.BackgroundTransparency = 1
 previewName.Text = "Player"
 previewName.TextColor3 = Color3.new(1, 1, 1)
-previewName.TextSize = 13
-previewName.Font = Enum.Font.GothamSemibold
-previewName.TextStrokeTransparency = 0
+previewName.TextSize = 14
+previewName.Font = Enum.Font.Arial
+previewName.TextStrokeColor3 = Color3.new(0, 0, 0)
+previewName.TextStrokeTransparency = 1
 previewName.ZIndex = 12
 previewName.Parent = previewCanvas
+
+-- Preview for the independent Distance ESP toggle.
+-- Scoped to avoid adding top-level locals (Luau 200-register limit).
+do
+    local distanceLabel = previewName:Clone()
+    distanceLabel.Name = "PreviewDistance"
+    distanceLabel.Text = "120m"
+    distanceLabel.Size = UDim2.fromOffset(60, 16)
+    distanceLabel.Position = UDim2.fromOffset(72, 18)
+    distanceLabel.TextXAlignment = Enum.TextXAlignment.Center
+    distanceLabel.Visible = false
+    distanceLabel.Parent = previewCanvas
+end
 
 local previewCaption = Instance.new("TextLabel")
 previewCaption.Name = "PreviewCaption"
@@ -2175,6 +2241,23 @@ local function refreshESPPreview()
     previewName.Visible = pToggle("NameESPEnabled")
     previewName.Text = pOption("ESPNameType", "Display Name") == "Username" and "Player_123" or "DisplayName"
     previewName.TextColor3 = pOption("NameESPColor", Color3.new(1, 1, 1))
+
+    local previewDistance = previewCanvas:FindFirstChild("PreviewDistance")
+    if previewDistance then
+        previewDistance.Visible = pToggle("DistanceESPEnabled")
+        previewDistance.Text = "120m"
+        previewDistance.TextColor3 = pOption("DistanceESPColor", Color3.new(1, 1, 1))
+        local distancePosition = pOption("ESPDistancePosition", "Top")
+        if distancePosition == "Bottom" then
+            previewDistance.Position = UDim2.fromOffset(72, 218)
+        elseif distancePosition == "Left" then
+            previewDistance.Position = UDim2.fromOffset(-40, 109)
+        elseif distancePosition == "Right" then
+            previewDistance.Position = UDim2.fromOffset(186, 109)
+        else
+            previewDistance.Position = UDim2.fromOffset(72, previewName.Visible and 18 or 2)
+        end
+    end
 
     local chams = pToggle("ChamsESPEnabled")
     local state = pOption("ESPPreviewChamsState", "Visible")
@@ -2331,17 +2414,42 @@ local function createESP(player)
 
     obj.Tracer = newLine()
 
+    -- Background drawing objects retained for compatibility, but disabled
+    -- to keep the in-game Arial ESP labels clean and borderless.
+    obj.NameBG = Drawing.new("Square")
+    obj.NameBG.Visible = false
+    obj.NameBG.Filled = true
+    obj.NameBG.Color = Color3.fromRGB(9, 11, 16)
+    obj.NameBG.Transparency = 0.58
+    obj.NameBG.Thickness = 0
+
+    obj.DistanceBG = Drawing.new("Square")
+    obj.DistanceBG.Visible = false
+    obj.DistanceBG.Filled = true
+    obj.DistanceBG.Color = Color3.fromRGB(9, 11, 16)
+    obj.DistanceBG.Transparency = 0.58
+    obj.DistanceBG.Thickness = 0
+
     obj.Name = Drawing.new("Text")
 
     obj.Name.Visible = false
 
     obj.Name.Center = true
 
-    obj.Name.Outline = true
+    obj.Name.Outline = false
 
-    obj.Name.Size = 14
+    obj.Name.Size = 15
+    obj.Name.Font = 0 -- Drawing UI font: Arial-style text in the actual game ESP.
 
     obj.Name.Transparency = 1
+
+    obj.Distance = Drawing.new("Text")
+    obj.Distance.Visible = false
+    obj.Distance.Center = true
+    obj.Distance.Outline = false
+    obj.Distance.Size = 15
+    obj.Distance.Font = 0 -- Drawing UI font: Arial-style text in the actual game ESP.
+    obj.Distance.Transparency = 1
 
     ESPObjects[player] = obj
 
@@ -2360,6 +2468,10 @@ local function hideESP(obj)
     obj.HeadDot.Visible = false
 
     obj.Name.Visible = false
+    obj.NameBG.Visible = false
+
+    obj.Distance.Visible = false
+    obj.DistanceBG.Visible = false
 
     if obj.Highlight then obj.Highlight.Enabled = false end
 
@@ -2382,6 +2494,10 @@ local function removeESP(player)
     obj.HeadDot:Remove()
 
     obj.Name:Remove()
+    obj.NameBG:Remove()
+
+    obj.Distance:Remove()
+    obj.DistanceBG:Remove()
 
     if obj.Highlight then obj.Highlight:Destroy() end
 
@@ -2495,13 +2611,12 @@ local function updateESP(player, obj)
 
     for _, line in ipairs(obj.Corners) do line.Visible = false end
 
-    if Toggles.BoxESPEnabled.Value then
+    local minX, minY = math.huge, math.huge
+    local maxX, maxY = -math.huge, -math.huge
+    local count = 0
 
-        local minX, minY = math.huge, math.huge
-
-        local maxX, maxY = -math.huge, -math.huge
-
-        local count = 0
+    if Toggles.BoxESPEnabled.Value or Toggles.DistanceESPEnabled.Value
+        or Toggles.NameESPEnabled.Value then
 
 -- Bounding box from the character's actual 3D extents.
 
@@ -2537,7 +2652,7 @@ local function updateESP(player, obj)
 
         end
 
-        if count == 8 then
+        if count == 8 and Toggles.BoxESPEnabled.Value then
 
             local width, height = maxX - minX, maxY - minY
 
@@ -2621,32 +2736,64 @@ local function updateESP(player, obj)
 
     end
 
+    -- In-game ESP text: position using projected character bounds (not the
+    -- dummy preview), and keep the name and distance on separate lines.
     obj.Name.Visible = false
+    obj.Distance.Visible = false
+    obj.NameBG.Visible = false
+    obj.DistanceBG.Visible = false
+    obj._espDistance = (root.Position - myRoot.Position).Magnitude
 
-    if Toggles.NameESPEnabled.Value then
+    local labelSize = Options.ESPTextSize and Options.ESPTextSize.Value or 15
+    obj.Name.Size = labelSize
+    obj.Distance.Size = labelSize
 
-        local head = character:FindFirstChild("Head")
+    local centreX, centreY
+    if count == 8 and onScreen and pos.Z > 0 then
+        centreX = (minX + maxX) * 0.5
+        centreY = (minY + maxY) * 0.5
+    elseif onScreen and pos.Z > 0 then
+        centreX, centreY = pos.X, pos.Y
+        minX, maxX = pos.X - 22, pos.X + 22
+        minY, maxY = pos.Y - 48, pos.Y + 48
+    end
 
-        if head then
+    local placement = Options.ESPDistancePosition
+        and Options.ESPDistancePosition.Value or "Top"
+    local distanceOnTop = Toggles.DistanceESPEnabled.Value and placement == "Top"
 
-            local headPos, headVisible = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
-
-            local showName = headVisible and headPos.Z > 0
-
-            if showName then
-
-                obj.Name.Text = Options.ESPNameType.Value == "Username" and player.Name or player.DisplayName
-
-                obj.Name.Position = Vector2.new(headPos.X, headPos.Y)
-
-                obj.Name.Color = Options.NameESPColor.Value
-
-                obj.Name.Visible = true
-
+    if centreX then
+        if Toggles.NameESPEnabled.Value then
+            local displayName = Options.ESPNameType.Value == "Username"
+                and player.Name or player.DisplayName
+            -- Extremely long usernames obscure nearby players. Keep the full
+            -- value in the game; shorten only the rendered label.
+            if #displayName > 24 then
+                displayName = string.sub(displayName, 1, 21) .. "..."
             end
-
+            obj.Name.Text = displayName
+            obj.Name.Position = Vector2.new(
+                centreX, minY - (distanceOnTop and (labelSize * 2 + 12) or (labelSize + 8))
+            )
+            obj.Name.Color = Options.NameESPColor.Value
+            obj.Name.Visible = true
         end
 
+        if Toggles.DistanceESPEnabled.Value then
+            obj.Distance.Text = string.format("%dm", math.floor(obj._espDistance * 0.28 + 0.5))
+            obj.Distance.Color = Options.DistanceESPColor.Value
+            if placement == "Bottom" then
+                obj.Distance.Position = Vector2.new(centreX, maxY + 7)
+            elseif placement == "Left" then
+                -- Exact text width is applied later by the screen-space layout.
+                obj.Distance.Position = Vector2.new(minX - 14, centreY - labelSize * 0.5)
+            elseif placement == "Right" then
+                obj.Distance.Position = Vector2.new(maxX + 14, centreY - labelSize * 0.5)
+            else
+                obj.Distance.Position = Vector2.new(centreX, minY - labelSize - 5)
+            end
+            obj.Distance.Visible = true
+        end
     end
 
 -- A camera-to-target ray determines whether geometry blocks the character.-- Ignore the local character and the target itself.
@@ -2727,15 +2874,120 @@ Players.PlayerAdded:Connect(createESP)
 
 Players.PlayerRemoving:Connect(removeESP)
 
-RunService.RenderStepped:Connect(function()
-
-    for player, obj in pairs(ESPObjects) do
-
-        updateESP(player, obj)
-
+-- Resolve on-screen collisions between the REAL Drawing labels every frame.
+-- Scoped to avoid adding to the main chunk's 200-local-register limit.
+do
+    local function getLabelSize(label)
+        local ok, bounds = pcall(function() return label.TextBounds end)
+        if ok and bounds and bounds.X and bounds.X > 0 then
+            return bounds.X, math.max(label.Size + 3, bounds.Y)
+        end
+        return math.max(24, #tostring(label.Text) * label.Size * 0.55), label.Size + 3
     end
 
-end)
+    local function overlaps(a, b)
+        return a.x < b.x + b.w + 4 and a.x + a.w + 4 > b.x
+            and a.y < b.y + b.h + 4 and a.y + a.h + 4 > b.y
+    end
+
+    RunService.RenderStepped:Connect(function()
+        for player, obj in pairs(ESPObjects) do
+            updateESP(player, obj)
+        end
+
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        local viewport = camera.ViewportSize
+        local labels = {}
+
+        for player, obj in pairs(ESPObjects) do
+            if obj.Name.Visible then
+                labels[#labels + 1] = {
+                    label = obj.Name, bg = obj.NameBG,
+                    depth = obj._espDistance or math.huge,
+                    id = player.UserId, order = 1
+                }
+            end
+            if obj.Distance.Visible then
+                labels[#labels + 1] = {
+                    label = obj.Distance, bg = obj.DistanceBG,
+                    depth = obj._espDistance or math.huge,
+                    id = player.UserId, order = 2,
+                    side = Options.ESPDistancePosition
+                        and Options.ESPDistancePosition.Value or "Top",
+                }
+            end
+        end
+
+        -- Closest players get the clearest placement. Stable IDs prevent
+        -- labels from randomly swapping order as pairs() iterates.
+        table.sort(labels, function(a, b)
+            if math.abs(a.depth - b.depth) > 0.1 then
+                return a.depth < b.depth
+            end
+            if a.id ~= b.id then return a.id < b.id end
+            return a.order < b.order
+        end)
+
+        local occupied = {}
+        for _, entry in ipairs(labels) do
+            local label = entry.label
+            local width, height = getLabelSize(label)
+            local desired = label.Position
+            local x = desired.X
+            local y = desired.Y
+            if entry.side == "Left" then
+                x = x - width * 0.5
+            elseif entry.side == "Right" then
+                x = x + width * 0.5
+            end
+
+            x = math.clamp(x, width * 0.5 + 6,
+                math.max(width * 0.5 + 6, viewport.X - width * 0.5 - 6))
+            y = math.clamp(y, 5, math.max(5, viewport.Y - height - 5))
+
+            local chosen = nil
+            -- Try the natural position, then nearby vertical lanes to keep
+            -- overlapping usernames and distance labels readable.
+            for attempt = 0, 14 do
+                local shift = 0
+                if attempt > 0 then
+                    local lane = math.ceil(attempt / 2)
+                    shift = (attempt % 2 == 1 and -1 or 1) * lane * (height + 6)
+                end
+                local candidateY = y + shift
+                if candidateY >= 5 and candidateY + height < viewport.Y - 5 then
+                    local rect = {x = x - width * 0.5, y = candidateY,
+                        w = width, h = height}
+                    local free = true
+                    for _, other in ipairs(occupied) do
+                        if overlaps(rect, other) then
+                            free = false
+                            break
+                        end
+                    end
+                    if free then
+                        chosen = rect
+                        break
+                    end
+                end
+            end
+
+            if chosen then
+                label.Position = Vector2.new(chosen.x + width * 0.5, chosen.y)
+                entry.bg.Position = Vector2.new(chosen.x - 5, chosen.y - 2)
+                entry.bg.Size = Vector2.new(width + 10, height + 4)
+                entry.bg.Visible = false -- No dark background behind in-game ESP text.
+                occupied[#occupied + 1] = chosen
+            else
+                -- When too many players are stacked together, hide the
+                -- unplaceable label instead of drawing unreadable text piles.
+                label.Visible = false
+                entry.bg.Visible = false
+            end
+        end
+    end)
+end
 
 -- Aim modes: the Enabled checkbox mirrors the real active state.
 
