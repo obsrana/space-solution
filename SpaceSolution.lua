@@ -1564,15 +1564,15 @@ local watermarkGui = uiCreate("ScreenGui", {
 }, guiParent)
 local watermarkBar = uiCreate("Frame", {
     Name = "WatermarkBar", Position = UDim2.new(1, -292, 0, 12),
-    Size = UDim2.fromOffset(280, 26), BackgroundColor3 = Color3.fromRGB(24, 24, 30),
+    Size = UDim2.fromOffset(280, 32), BackgroundColor3 = Color3.fromRGB(24, 24, 30),
     BorderSizePixel = 0, Visible = false
 }, watermarkGui)
-uiRound(watermarkBar, 4)
+uiRound(watermarkBar, 5)
 uiCreate("UIStroke", {Color = Color3.fromRGB(105, 105, 116), Thickness = 1}, watermarkBar)
 local watermark = uiText(watermarkBar,
-    "SpaceSolution | User - " .. LocalPlayer.Name, 12, WHITE, true)
-watermark.Position = UDim2.fromOffset(9, 0)
-watermark.Size = UDim2.new(1, -18, 1, -2)
+    "SpaceSolution | User - " .. LocalPlayer.Name, 14, WHITE, true)
+watermark.Position = UDim2.fromOffset(12, 0)
+watermark.Size = UDim2.new(1, -24, 1, -2)
 local watermarkLine = uiCreate("Frame", {
     Position = UDim2.new(0, 0, 1, -2), Size = UDim2.new(1, 0, 0, 2),
     BackgroundColor3 = ACCENT, BorderSizePixel = 0
@@ -1606,13 +1606,13 @@ do
         watermark.Text = "SpaceSolution | User - " .. userName
         watermark.TextTruncate = Enum.TextTruncate.AtEnd
         local textWidth = textService:GetTextSize(
-            watermark.Text, 12, Enum.Font.GothamBold, Vector2.new(2000, 26)
+            watermark.Text, 14, Enum.Font.GothamBold, Vector2.new(2000, 32)
         ).X
         local camera = workspace.CurrentCamera
         local screenWidth = camera and camera.ViewportSize.X or 800
-        local maxWidth = math.max(120, math.min(560, screenWidth - 24))
-        local width = math.clamp(math.ceil(textWidth + 20), math.min(180, maxWidth), maxWidth)
-        watermarkBar.Size = UDim2.fromOffset(width, 26)
+        local maxWidth = math.max(120, math.min(600, screenWidth - 24))
+        local width = math.clamp(math.ceil(textWidth + 28), math.min(200, maxWidth), maxWidth)
+        watermarkBar.Size = UDim2.fromOffset(width, 32)
 
         if positionTween then positionTween:Cancel() end
         watermarkBar.Position = getWatermarkPosition()
@@ -1781,7 +1781,7 @@ local ESPControls = ESPBox:AddTab("Visuals")
 
 ESPControls:AddToggle("SkeletonEnabled", {Text = "Skeleton ESP", Default = false}):AddColorPicker("SkeletonColor", {Default = Color3.fromRGB(255,255,255), Title = "Skeleton Color"})
 
-ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 1, Min = 1, Max = 5, Rounding = 1})
+ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 2.5, Min = 0.5, Max = 10, Rounding = 1})
 
 ESPControls:AddToggle("HeadDotEnabled", {Text = "Head Dot", Default = false}):AddColorPicker("HeadDotColor", {Default = Color3.fromRGB(255,255,255), Title = "Head Dot Color"})
 
@@ -2217,7 +2217,7 @@ end
 local function refreshESPPreview()
     local skeletonVisible = pToggle("SkeletonEnabled")
     local skeletonColor = pOption("SkeletonColor", Color3.new(1, 1, 1))
-    local skeletonThickness = pOption("SkeletonThickness", 1)
+    local skeletonThickness = pOption("SkeletonThickness", 2.5)
     for _, line in ipairs(previewBones) do
         line.Visible = skeletonVisible
         line.BackgroundColor3 = skeletonColor
@@ -2305,72 +2305,39 @@ RunService.Heartbeat:Connect(function(dt)
     refreshESPPreview()
 end)
 
--- Joint-based skeleton: uses actual Motor6D joint positions instead of part centres.
+-- Skeleton ESP based on the supplied source: cached BasePart-to-BasePart connections.
+-- R6 and R15 parts are resolved once per character, not searched every frame.
+local function buildSkeletonConnections(character)
+    local head = character:FindFirstChild("Head")
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    local lowerTorso = character:FindFirstChild("LowerTorso")
+    local leftArm = character:FindFirstChild("Left Arm") or character:FindFirstChild("LeftUpperArm")
+    local rightArm = character:FindFirstChild("Right Arm") or character:FindFirstChild("RightUpperArm")
+    local leftLeg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftUpperLeg")
+    local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
+    local leftHand = character:FindFirstChild("LeftHand") or character:FindFirstChild("LeftLowerArm")
+    local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("RightLowerArm")
+    local leftFoot = character:FindFirstChild("LeftFoot") or character:FindFirstChild("LeftLowerLeg")
+    local rightFoot = character:FindFirstChild("RightFoot") or character:FindFirstChild("RightLowerLeg")
 
-local R15Bones = {
-
-    {"Neck", "Waist"},
-
-    {"Neck", "LeftShoulder"}, {"LeftShoulder", "LeftElbow"}, {"LeftElbow", "LeftWrist"},
-
-    {"Neck", "RightShoulder"}, {"RightShoulder", "RightElbow"}, {"RightElbow", "RightWrist"},
-
-    {"Waist", "LeftHip"}, {"LeftHip", "LeftKnee"}, {"LeftKnee", "LeftAnkle"},
-
-    {"Waist", "RightHip"}, {"RightHip", "RightKnee"}, {"RightKnee", "RightAnkle"}
-
-}
-
-local R6Bones = {
-
-    {"Neck", "RootJoint"},
-
-    {"Neck", "Left Shoulder"}, {"Left Shoulder", "LeftHandEnd"},
-
-    {"Neck", "Right Shoulder"}, {"Right Shoulder", "RightHandEnd"},
-
-    {"RootJoint", "Left Hip"}, {"Left Hip", "LeftFootEnd"},
-
-    {"RootJoint", "Right Hip"}, {"Right Hip", "RightFootEnd"}
-
-}
-
-local function skeletonAnchors(character, rigType)
-
-    local anchors = {}
-
-    for _, descendant in ipairs(character:GetDescendants()) do
-
-        if descendant:IsA("Motor6D") and descendant.Part0 then
-
-            anchors[descendant.Name] = descendant.Part0.CFrame:PointToWorldSpace(descendant.C0.Position)
-
+    local connections = {}
+    local function connect(part1, part2)
+        if part1 and part2 then
+            connections[#connections + 1] = {part1, part2}
         end
-
     end
 
-    if rigType == Enum.HumanoidRigType.R6 then
-
-        local leftArm = character:FindFirstChild("Left Arm")
-
-        local rightArm = character:FindFirstChild("Right Arm")
-
-        local leftLeg = character:FindFirstChild("Left Leg")
-
-        local rightLeg = character:FindFirstChild("Right Leg")
-
-        if leftArm then anchors.LeftHandEnd = leftArm.CFrame:PointToWorldSpace(Vector3.new(0, -leftArm.Size.Y * 0.48, 0)) end
-
-        if rightArm then anchors.RightHandEnd = rightArm.CFrame:PointToWorldSpace(Vector3.new(0, -rightArm.Size.Y * 0.48, 0)) end
-
-        if leftLeg then anchors.LeftFootEnd = leftLeg.CFrame:PointToWorldSpace(Vector3.new(0, -leftLeg.Size.Y * 0.48, 0)) end
-
-        if rightLeg then anchors.RightFootEnd = rightLeg.CFrame:PointToWorldSpace(Vector3.new(0, -rightLeg.Size.Y * 0.48, 0)) end
-
-    end
-
-    return anchors
-
+    connect(head, torso)
+    connect(torso, lowerTorso)
+    connect(torso, leftArm)
+    connect(torso, rightArm)
+    connect(leftArm, leftHand)
+    connect(rightArm, rightHand)
+    connect(lowerTorso or torso, leftLeg)
+    connect(lowerTorso or torso, rightLeg)
+    connect(leftLeg, leftFoot)
+    connect(rightLeg, rightFoot)
+    return connections
 end
 
 local ESPObjects = {}
@@ -2393,9 +2360,14 @@ local function createESP(player)
 
     if player == LocalPlayer or ESPObjects[player] then return end
 
-    local obj = {Bones = {}}
+    local obj = {
+        Bones = {},
+        SkeletonConnections = {},
+        SkeletonCharacter = nil,
+        SkeletonRefreshAt = 0,
+    }
 
-    for i = 1, #R15Bones do obj.Bones[i] = newLine() end
+    for i = 1, 10 do obj.Bones[i] = newLine() end
 
     obj.Box = Drawing.new("Square")
 
@@ -2542,50 +2514,43 @@ local function updateESP(player, obj)
 
     end
 
-    local bones = humanoid.RigType == Enum.HumanoidRigType.R6 and R6Bones or R15Bones
-
     if Toggles.SkeletonEnabled.Value then
-
-        local anchors = skeletonAnchors(character, humanoid.RigType)
-
-        for i, line in ipairs(obj.Bones) do
-
-            local bone = bones[i]
-
-            local p1 = bone and anchors[bone[1]]
-
-            local p2 = bone and anchors[bone[2]]
-
-            line.Visible = false
-
-            if p1 and p2 then
-
-                local a, aVisible = camera:WorldToViewportPoint(p1)
-
-                local b, bVisible = camera:WorldToViewportPoint(p2)
-
-                if aVisible and bVisible and a.Z > 0 and b.Z > 0 then
-
-                    line.From = Vector2.new(a.X, a.Y)
-
-                    line.To = Vector2.new(b.X, b.Y)
-
-                    line.Color = Options.SkeletonColor.Value
-
-                    line.Thickness = Options.SkeletonThickness.Value
-
-                    line.Visible = true
-
-                end
-
-            end
-
+        -- Rebuild connections on respawn; retry briefly when streamed parts are missing.
+        local now = os.clock()
+        if obj.SkeletonCharacter ~= character or now >= obj.SkeletonRefreshAt then
+            obj.SkeletonCharacter = character
+            obj.SkeletonConnections = buildSkeletonConnections(character)
+            local expectedCount = character:FindFirstChild("Torso") and 5 or 10
+            obj.SkeletonRefreshAt = now + (#obj.SkeletonConnections < expectedCount and 1.5 or 10)
         end
 
+        -- The supplied source fades skeleton lines with distance (500 studs).
+        local distance = (root.Position - myRoot.Position).Magnitude
+        local transparency = math.clamp(1 - distance / 500, 0.3, 1)
+        local thickness = Options.SkeletonThickness.Value
+        local color = Options.SkeletonColor.Value
+
+        for i, line in ipairs(obj.Bones) do
+            local connection = obj.SkeletonConnections[i]
+            line.Visible = false
+            if connection then
+                local part1, part2 = connection[1], connection[2]
+                if part1.Parent == character and part2.Parent == character then
+                    local pos1, onScreen1 = camera:WorldToViewportPoint(part1.Position)
+                    local pos2, onScreen2 = camera:WorldToViewportPoint(part2.Position)
+                    if onScreen1 and onScreen2 and pos1.Z > 0 and pos2.Z > 0 then
+                        line.From = Vector2.new(pos1.X, pos1.Y)
+                        line.To = Vector2.new(pos2.X, pos2.Y)
+                        line.Color = color
+                        line.Thickness = thickness
+                        line.Transparency = transparency
+                        line.Visible = true
+                    end
+                end
+            end
+        end
     else
-
         for _, line in ipairs(obj.Bones) do line.Visible = false end
-
     end
 
 -- Head Dot uses identical pixel radius for all players, regardless of camera distance.
