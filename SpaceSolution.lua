@@ -1821,9 +1821,14 @@ ESPControls:AddDropdown("ESPDistancePosition", {
     AllowNull = false
 })
 
--- Controls the actual in-game Drawing labels, not just the ESP Preview.
-ESPControls:AddSlider("ESPTextSize", {
-    Text = "ESP Text Size (in game)", Default = 15,
+-- Independent text-size sliders for actual in-game ESP labels.
+ESPControls:AddSlider("NameESPTextSize", {
+    Text = "Name ESP Text Size (in game)", Default = 15,
+    Min = 12, Max = 22, Rounding = 0
+})
+
+ESPControls:AddSlider("DistanceESPTextSize", {
+    Text = "Distance ESP Text Size (in game)", Default = 15,
     Min = 12, Max = 22, Rounding = 0
 })
 
@@ -2159,7 +2164,7 @@ previewDotStroke.Parent = previewHeadDot
 
 local previewName = Instance.new("TextLabel")
 previewName.Name = "PreviewName"
-previewName.Size = UDim2.fromOffset(190, 16)
+previewName.Size = UDim2.fromOffset(190, 26)
 previewName.Position = UDim2.fromOffset(7, 2)
 previewName.BackgroundTransparency = 1
 previewName.Text = "Player"
@@ -2177,7 +2182,7 @@ do
     local distanceLabel = previewName:Clone()
     distanceLabel.Name = "PreviewDistance"
     distanceLabel.Text = "120m"
-    distanceLabel.Size = UDim2.fromOffset(60, 16)
+    distanceLabel.Size = UDim2.fromOffset(60, 26)
     distanceLabel.Position = UDim2.fromOffset(72, 18)
     distanceLabel.TextXAlignment = Enum.TextXAlignment.Center
     distanceLabel.Visible = false
@@ -2241,12 +2246,14 @@ local function refreshESPPreview()
     previewName.Visible = pToggle("NameESPEnabled")
     previewName.Text = pOption("ESPNameType", "Display Name") == "Username" and "Player_123" or "DisplayName"
     previewName.TextColor3 = pOption("NameESPColor", Color3.new(1, 1, 1))
+    previewName.TextSize = pOption("NameESPTextSize", 15)
 
     local previewDistance = previewCanvas:FindFirstChild("PreviewDistance")
     if previewDistance then
         previewDistance.Visible = pToggle("DistanceESPEnabled")
         previewDistance.Text = "120m"
         previewDistance.TextColor3 = pOption("DistanceESPColor", Color3.new(1, 1, 1))
+        previewDistance.TextSize = pOption("DistanceESPTextSize", 15)
         local distancePosition = pOption("ESPDistancePosition", "Top")
         if distancePosition == "Bottom" then
             previewDistance.Position = UDim2.fromOffset(72, 218)
@@ -2255,7 +2262,9 @@ local function refreshESPPreview()
         elseif distancePosition == "Right" then
             previewDistance.Position = UDim2.fromOffset(186, 109)
         else
-            previewDistance.Position = UDim2.fromOffset(72, previewName.Visible and 18 or 2)
+            previewDistance.Position = UDim2.fromOffset(
+                72, previewName.Visible and (2 + previewName.TextSize + 4) or 2
+            )
         end
     end
 
@@ -2744,9 +2753,10 @@ local function updateESP(player, obj)
     obj.DistanceBG.Visible = false
     obj._espDistance = (root.Position - myRoot.Position).Magnitude
 
-    local labelSize = Options.ESPTextSize and Options.ESPTextSize.Value or 15
-    obj.Name.Size = labelSize
-    obj.Distance.Size = labelSize
+    local nameLabelSize = Options.NameESPTextSize and Options.NameESPTextSize.Value or 15
+    local distanceLabelSize = Options.DistanceESPTextSize and Options.DistanceESPTextSize.Value or 15
+    obj.Name.Size = nameLabelSize
+    obj.Distance.Size = distanceLabelSize
 
     local centreX, centreY
     if count == 8 and onScreen and pos.Z > 0 then
@@ -2773,7 +2783,9 @@ local function updateESP(player, obj)
             end
             obj.Name.Text = displayName
             obj.Name.Position = Vector2.new(
-                centreX, minY - (distanceOnTop and (labelSize * 2 + 12) or (labelSize + 8))
+                centreX, minY - (distanceOnTop
+                    and (nameLabelSize + distanceLabelSize + 12)
+                    or (nameLabelSize + 8))
             )
             obj.Name.Color = Options.NameESPColor.Value
             obj.Name.Visible = true
@@ -2786,11 +2798,11 @@ local function updateESP(player, obj)
                 obj.Distance.Position = Vector2.new(centreX, maxY + 7)
             elseif placement == "Left" then
                 -- Exact text width is applied later by the screen-space layout.
-                obj.Distance.Position = Vector2.new(minX - 14, centreY - labelSize * 0.5)
+                obj.Distance.Position = Vector2.new(minX - 14, centreY - distanceLabelSize * 0.5)
             elseif placement == "Right" then
-                obj.Distance.Position = Vector2.new(maxX + 14, centreY - labelSize * 0.5)
+                obj.Distance.Position = Vector2.new(maxX + 14, centreY - distanceLabelSize * 0.5)
             else
-                obj.Distance.Position = Vector2.new(centreX, minY - labelSize - 5)
+                obj.Distance.Position = Vector2.new(centreX, minY - distanceLabelSize - 5)
             end
             obj.Distance.Visible = true
         end
