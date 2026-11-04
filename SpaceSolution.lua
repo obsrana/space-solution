@@ -44,7 +44,7 @@ local SilentAimSettings = {
 
 getgenv().SilentAimSettings = SilentAimSettings
 
-local MainFileName = "UniversalSilentAim"
+local MainFileName = "spacesolution"
 
 local Toggles, Options = {}, {}
 
