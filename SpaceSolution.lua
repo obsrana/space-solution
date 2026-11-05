@@ -365,6 +365,7 @@ local function getClosestPlayer()
     local Closest
 
     local DistanceToMouse
+    local mousePosition = getMousePosition()
 
     for _, Player in next, GetPlayers(Players) do
 
@@ -390,7 +391,7 @@ local function getClosestPlayer()
 
         if not OnScreen then continue end
 
-        local Distance = (getMousePosition() - ScreenPosition).Magnitude
+        local Distance = (mousePosition - ScreenPosition).Magnitude
 
         if Distance <= (DistanceToMouse or Options.Radius.Value or 2000) then
 
@@ -1516,16 +1517,28 @@ end
     end)
 
     -- Restore each body's original CanCollide value after Noclip is disabled.
+    local noclipParts, noclipCharacter, noclipRefresh = {}, nil, 0
     local noclipConnection = RunService.Stepped:Connect(function()
         if state.Unloaded or not state.Noclip then return end
         local character = LocalPlayer.Character
         if not character then return end
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
+        local now = os.clock()
+        if character ~= noclipCharacter or now >= noclipRefresh then
+            noclipCharacter = character
+            noclipRefresh = now + 1
+            table.clear(noclipParts)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    noclipParts[#noclipParts + 1] = part
+                end
+            end
+        end
+        for _, part in ipairs(noclipParts) do
+            if part.Parent then
                 if state.NoclipOriginal[part] == nil then
                     state.NoclipOriginal[part] = part.CanCollide
                 end
-                part.CanCollide = false
+                if part.CanCollide then part.CanCollide = false end
             end
         end
     end)
@@ -1782,6 +1795,8 @@ local ESPControls = ESPBox:AddTab("Visuals")
 ESPControls:AddToggle("SkeletonEnabled", {Text = "Skeleton ESP", Default = false}):AddColorPicker("SkeletonColor", {Default = Color3.fromRGB(255,255,255), Title = "Skeleton Color"})
 
 ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 2.5, Min = 0.5, Max = 10, Rounding = 1})
+
+ESPControls:AddSlider("ESPUpdateRate", {Text = "ESP Update Rate (Hz)", Default = 60, Min = 15, Max = 180, Rounding = 0})
 
 ESPControls:AddToggle("HeadDotEnabled", {Text = "Head Dot", Default = false}):AddColorPicker("HeadDotColor", {Default = Color3.fromRGB(255,255,255), Title = "Head Dot Color"})
 
@@ -2301,7 +2316,7 @@ RunService.Heartbeat:Connect(function(dt)
     previewUpdateTime = previewUpdateTime + dt
     if previewUpdateTime < 0.1 then return end
     previewUpdateTime = 0
-    if not previewHost.Parent then return end
+    if not previewHost.Parent or selectedPage ~= "Visuals" then return end
     refreshESPPreview()
 end)
 
@@ -2512,6 +2527,13 @@ local function updateESP(player, obj)
 
         return
 
+    end
+
+    -- Fast off-screen rejection before 3D bounding boxes and bone projection.
+    local rootScreen, rootOnScreen = camera:WorldToViewportPoint(root.Position)
+    if rootScreen.Z <= 0 or not rootOnScreen then
+        hideESP(obj)
+        return
     end
 
     if Toggles.SkeletonEnabled.Value then
@@ -2780,7 +2802,11 @@ local function updateESP(player, obj)
 -- A camera-to-target ray determines whether geometry blocks the character.-- Ignore the local character and the target itself.
 
     local function isCharacterVisible()
-
+        local now = os.clock()
+        if obj.VisibilityCharacter == character and obj.VisibilityUntil
+            and now < obj.VisibilityUntil then
+            return obj.CachedVisible
+        end
         local origin = camera.CFrame.Position
 
         local direction = root.Position - origin
@@ -2805,7 +2831,10 @@ local function updateESP(player, obj)
 
         local hit = workspace:Raycast(origin, direction, params)
 
-        return hit == nil
+        obj.VisibilityCharacter = character
+        obj.VisibilityUntil = now + 0.10
+        obj.CachedVisible = hit == nil
+        return obj.CachedVisible
 
     end
 
@@ -2871,11 +2900,33 @@ do
             and a.y < b.y + b.h + 4 and a.y + a.h + 4 > b.y
     end
 
-    RunService.RenderStepped:Connect(function()
+    -- Adjustable ESP budget (15–180 Hz); at low FPS naturally updates per frame.
+    -- Allows the user to trade render smoothness for CPU/GPU load.
+    local espElapsed = 0
+    local espHidden = false
+    RunService.RenderStepped:Connect(function(dt)
+        local enabled = Toggles.SkeletonEnabled.Value or Toggles.HeadDotEnabled.Value
+            or Toggles.BoxESPEnabled.Value or Toggles.TracerESPEnabled.Value
+            or Toggles.NameESPEnabled.Value or Toggles.DistanceESPEnabled.Value
+            or Toggles.ChamsESPEnabled.Value
+        if not enabled then
+            if not espHidden then
+                for _, obj in pairs(ESPObjects) do hideESP(obj) end
+                espHidden = true
+            end
+            return
+        end
+        espHidden = false
+        espElapsed = espElapsed + dt
+        local rate = math.clamp(tonumber(Options.ESPUpdateRate.Value) or 60, 15, 180)
+        if espElapsed < 1 / rate then return end
+        espElapsed = 0
         for player, obj in pairs(ESPObjects) do
             updateESP(player, obj)
         end
 
+        -- Skip label sorting and overlap checks if both text ESPs are off.
+        if not Toggles.NameESPEnabled.Value and not Toggles.DistanceESPEnabled.Value then return end
         local camera = workspace.CurrentCamera
         if not camera then return end
         local viewport = camera.ViewportSize
@@ -3422,9 +3473,13 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
+do
+local lastTriggerCheck = 0
 RunService.RenderStepped:Connect(function()
     if not TriggerBotSettings.Enabled then return end
     local now = os.clock()
+    if now - lastTriggerCheck < 1 / 30 then return end
+    lastTriggerCheck = now
     if now - triggerLastShot < TriggerBotSettings.Delay then return end
     if not triggerTargetValid() then return end
     if type(mouse1click) == "function" then
@@ -3436,6 +3491,7 @@ RunService.RenderStepped:Connect(function()
         task.defer(mouse1release)
     end
 end)
+end
 
 end)() -- Trigger Bot isolated to keep main-chunk register usage low
 
