@@ -1648,7 +1648,7 @@ globalsControls:AddButton("Hide Menu", function()
     closePopup()
     animateMenu(false) -- Press the configured Menu Key to reopen.
 end)
-globalsControls:AddButton("Unload Menu", function()
+globalsControls:AddButton("Unload Script (ALL OFF)", function()
     SpaceRuntime:Unload()
 end)
 local unifiedConfigContent = nil
@@ -3473,7 +3473,7 @@ end
 
 end)() -- Trigger Bot isolated to keep main-chunk register usage low
 
--- SpaceSolution client-side Hit/Kill Sounds.
+-- SpaceSolution client-side Hit / Long Kill Sounds.
 -- The game-specific weapon's server acknowledgement is unavailable in a universal script.
 -- Attribute feedback to recent local shots and/or a Humanoid's "creator" tag.
 ;(function()
@@ -3486,6 +3486,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     local assetCache = {} -- Resolve custom audio files once, not on every hit.
     local shotWindow = 1.25
     local longKillThreshold = 110 -- meters as shown by calibrated Distance ESP
+    local hitSoundMaxDistance = 99 -- Hit Sound only up to and including 99m
     local distanceScale = 0.28 * 1.614 -- must match Distance ESP / ESP Preview
 
     -- Store shot distance, rather than relying on the victim's position after death.
@@ -3581,7 +3582,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     end
 
     local function soundId(kind)
-        -- All three sounds come exclusively from spacesolution/KillSounds/.
+        -- Hit and Long Kill sounds come exclusively from spacesolution/KillSounds/.
         local picker = Options[kind .. "SoundFile"]
         local filename = picker and picker.Value
         if type(filename) ~= "string" or filename == noKillFiles
@@ -3709,12 +3710,12 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     end
 
     -- Folder only: no Custom Sound IDs, presets or manual paths.
-    -- One shared directory for Hit, Kill and Long Kill sounds.
-    local feedback = buildControls(makePanel("Hit & Kill Sounds", pages.Misc.columns[2]))
+    -- One shared directory for Hit (<=99m) and Long Kill (>=110m).
+    local feedback = buildControls(makePanel("Hit & Long Kill Sounds", pages.Misc.columns[2]))
     local initialFiles = listKillSoundFiles()
     local firstFile = initialFiles[1]
 
-    feedback:AddToggle("HitSoundsEnabled", {Text = "Hit Sounds", Default = false})
+    feedback:AddToggle("HitSoundsEnabled", {Text = "Hit Sounds (do 99m)", Default = false})
     feedback:AddDropdown("HitSoundFile", {
         Text = "Hit Sound File", Values = initialFiles,
         Default = firstFile, AllowNull = false
@@ -3726,19 +3727,6 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
         Text = "Hit Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
     })
     feedback:AddButton("Test Hit Sound", function() play("Hit", true) end)
-
-    feedback:AddToggle("KillSoundsEnabled", {Text = "Kill Sounds", Default = false})
-    feedback:AddDropdown("KillSoundFile", {
-        Text = "Kill Sound File", Values = initialFiles,
-        Default = firstFile, AllowNull = false
-    })
-    feedback:AddSlider("KillSoundVolume", {
-        Text = "Kill Volume", Min = 0, Max = 2, Default = 1, Rounding = 2
-    })
-    feedback:AddSlider("KillSoundPitch", {
-        Text = "Kill Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
-    })
-    feedback:AddButton("Test Kill Sound", function() play("Kill", true) end)
 
     feedback:AddToggle("LongKillSoundsEnabled", {Text = "Long Kill Sounds (110m+)", Default = false})
     feedback:AddDropdown("LongKillSoundFile", {
@@ -3763,7 +3751,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     feedback:AddButton("Rescan Sound Files", function()
         table.clear(assetCache)
         local files = listKillSoundFiles()
-        for _, kind in ipairs({"Hit", "Kill", "LongKill"}) do
+        for _, kind in ipairs({"Hit", "LongKill"}) do
             local picker = Options[kind .. "SoundFile"]
             if picker then
                 local previous = picker.Value
@@ -3786,7 +3774,6 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     local function markShot()
         if not SpaceRuntime.Active then return end
         if not ((Toggles.HitSoundsEnabled and Toggles.HitSoundsEnabled.Value)
-            or (Toggles.KillSoundsEnabled and Toggles.KillSoundsEnabled.Value)
             or (Toggles.LongKillSoundsEnabled and Toggles.LongKillSoundsEnabled.Value)) then return end
         local selected = nil
         -- If Silent Aim is active, the intended target may be different from Mouse.Target.
@@ -3850,10 +3837,12 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
                     or rec.creditedDistance or displayedDistance(player)
                 local longEnabled = Toggles.LongKillSoundsEnabled
                     and Toggles.LongKillSoundsEnabled.Value
-                if longEnabled and meters and meters >= longKillThreshold then
+                -- Kill Sounds controls were removed. Close-range kills use
+                -- the Hit Sound, if enabled; distant kills use Long Kill Sound.
+                if meters and longEnabled and meters >= longKillThreshold then
                     play("LongKill", false)
-                else
-                    play("Kill", false)
+                elseif meters and meters <= hitSoundMaxDistance then
+                    play("Hit", false)
                 end
             end
         end
@@ -3868,7 +3857,8 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
                 rec.creditedDistance = (shot and shot.distance) or displayedDistance(player)
                 if health <= 0 then
                     onDeath()
-                elseif os.clock() - rec.lastHitSound >= 0.08 then
+                elseif rec.creditedDistance and rec.creditedDistance <= hitSoundMaxDistance
+                    and os.clock() - rec.lastHitSound >= 0.08 then
                     rec.lastHitSound = os.clock()
                     play("Hit", false)
                 end
