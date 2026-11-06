@@ -22,6 +22,8 @@ local SilentAimSettings = {
 
     VisibleCheck = false,
 
+    MagicBullet = false,
+
     TargetPart = "HumanoidRootPart",
 
     SilentAimMethod = "Raycast",
@@ -44,7 +46,7 @@ local SilentAimSettings = {
 
 getgenv().SilentAimSettings = SilentAimSettings
 
-local MainFileName = "UniversalSilentAim"
+local MainFileName = "spacesolution"
 
 local Toggles, Options = {}, {}
 
@@ -363,6 +365,7 @@ local function getClosestPlayer()
     local Closest
 
     local DistanceToMouse
+    local mousePosition = getMousePosition()
 
     for _, Player in next, GetPlayers(Players) do
 
@@ -374,7 +377,9 @@ local function getClosestPlayer()
 
         if not Character then continue end
 
-        if Toggles.VisibleCheck.Value and not IsPlayerVisible(Player) then continue end
+        -- Magic Bullet ignores client-side occlusion when selecting a target.
+        if Toggles.VisibleCheck.Value and not SilentAimSettings.MagicBullet
+            and not IsPlayerVisible(Player) then continue end
 
         local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
 
@@ -386,7 +391,7 @@ local function getClosestPlayer()
 
         if not OnScreen then continue end
 
-        local Distance = (getMousePosition() - ScreenPosition).Magnitude
+        local Distance = (mousePosition - ScreenPosition).Magnitude
 
         if Distance <= (DistanceToMouse or Options.Radius.Value or 2000) then
 
@@ -637,6 +642,7 @@ local links = {}
 local linkLabels = {}
 -- Sidebar icons bundled directly in this Lua file.
 local sidebarIconPNGs = {
+    ["Misc"] = [[iVBORw0KGgoAAAANSUhEUgAAACgAAAApCAYAAABHomvIAAAB1UlEQVR42u3YT4tOcRjG8c9jJqNRRkSMBVGkRFKzmGIjylDY2IuNbLwL5QVYWFhKNt7ASFYkkg02NpqS0ZhJmMYYl82Phvx5/hzneRbPVb/O5v6d8z3n3Pd13+c0kuhlrdDj6gP2AbutwQ73r8cB7MUIZjGFu3hbCWGSdtfWJFeSTOVnLSS5luRgB+f+sdrduCnJ9fxdk0mOdQrY7is+irP/iDmM13iImTqLZCNONxk7gbG6q3g7xpuMXYfddQOuxVAL8UN1A77DdJOx83hTN+BT3G8y9jke1A24gFuYayL2Jp51y6gvJZn9gwcuJrlc/LIrRv19nUpyO8ncMrAnSS4kGa6ikzQqmqhHS7rM40NJg0rU6PWRv51WN4wjpUPswGYMYAlfy3EOr/C4rBd1Fcn+kvzv07wmk5ypo0jGkjxKe5pJcvF/Au5Mci+daSrJ8VYBmzXqkzjUYb5vwfkyDVXaSUZwrqKinMCJqgHHsasiwJXYg1VVAm6o2NpGW7G3bnx2DlX9ipcqBlwohl5ZJ7mDq9hXcugzVpcLDaKxrIv87sZXlE6ziJe4gU9V9+IBbMMafCyACiykAC4Ha/xSHF/KdD3dyuNu9P8P9gH7gH3APmBv6xsjtdJpLaw9SQAAAABJRU5ErkJggg==]],
     ["Walka"] = [[iVBORw0KGgoAAAANSUhEUgAAABQAAAAVCAYAAABG1c6oAAAB4klEQVR4nI2UO2hUURCGv10NWaKLNiIbQiwMWBgEC4OIggQCYmeQiI2SRixtBEGClYW9CIIEEkhhYyeCoIWVWpjGQhFE8AESxUeIJPj4LO6sjMvduztw4My9//wzZ141lT5kAmgBj4GPlUi11xlV76vf1ctqswpfq4hwP3AcOAwci28/gQXgHvAI+NRPhNvUWfWF1TKvHui0LyO70oMoyzP1UDfCunpGXUsGN9UZ9XXod8Lhm4S5rbbKCFvq0wSci4hRT6hX1YPqgDqlLifsdBnh0QSYV4ftUsk40+qvwN9QB1XqUZsx4Hyq1ZeO2g0Du4GBXE/gW9yngSlgAHVcfV6S8Hl1e+R2KfI2E9GdUldLbE7Xgd/Aj5I+3IgoAGrAJuBP6ENdenejXd1J9UHytKDuTfnaY9EeW0PfoV5M+DX1gtrcHF4fAiPAZHha5f+ZfdkRyQrwDlgHGmG/CKzWE+h9uu8CtiS9HifLSJABfKadtvSsUfVJesac2oh/Z9VrFqM2GCl6lbCzlvRh23A9Aa+rJ9W3KbeX1A8Js6Tu7EbY6Eh2L7mr7sscZRPQtJjp5R5kt9SJTvuq0RpXz8WT2vLVYskescui7WdjD1psmRWLXhuqwldt7CxjQDP6sWyq/slfutHhaaNLGNgAAAAASUVORK5CYII=]],
     ["Visuals"] = [[iVBORw0KGgoAAAANSUhEUgAAAB0AAAAeCAYAAADQBxWhAAAB4klEQVR42u2WPWsVURCGn9Vg0KtiuKAEhPiBiIhY+NUEES1sLESChQhCCIiIP8HCWjBYhBR2ARG0C5hKIlgE0djEzhDEQqIEYuEXIvjYHOF6mb17NiERIS8sLLMz83J2Zt4zhcpqYx3/AGukK4qumv49wDZgM9ANfAW+AIvpPQ9qztOtnlZvqwv+jc/qqNqfmSuL9KQ6bh4m1OPq+uWQXla/Wx+D6sayvEUHcRgC7gX2N8Ak8AHYDZwBdgZ+V4Cx3JoW6rmSE9xUt6Qa96c/cV4dLvEfyP29B9T5IMGtFp+G+izZ59QhdSSIWVAPVpE21btB8Cd1X4vfkaCBBtSfQexIe32jTo0wrvaofclnIvC5oT4P7D/Uw608XZli8Q3YDzwqaRqADckvsjc6yeBbYCYI3ANs70C4CHxM3dyOGeB9FelwEHgM2ApcLSG9k060K/g2AryrGpmm+jCozaS6Q72oPlFnU20vpDq/DmLG0nhlKdIh9VWQZE69pB5Nc3pKvZ66ux1Tam9dGSwj/iPy8yUjojqt7l2q9l5zaRjslLfqEn8BPKh5594Hni73Pm2mOk5XnG4qyWFvVc6ixgraAM4CJ4A+YBPwC5gFHgMvc7eHoubeWwCu9mLmf7sNrpGuKH4DXbLYA++4VvEAAAAASUVORK5CYII=]],
     ["List"] = [[iVBORw0KGgoAAAANSUhEUgAAABUAAAAUCAYAAABiS3YzAAACOUlEQVR4nH3Uy4uOYRgG8N98M2MYx+QQTRQJ2SihFKmxoJSdsrUTOyws5FBiN9nZYSF/gCIhFkLKMafkbBAxDuPw6WNui+d5zeudb1z1Lu7ree/rfu7T0xIR/oNOfMd0LMYL3EF75puibRh+IVagH0+wERtwDQdysGm4gktDvCOi/E2IiM0RcS8ifkfE/ojoiX9xIiL2RsSXiHgZEZuy31+dsuDEiNhVcv6YAzyPodgZEQ9K9vaIGFNo1fKFW7EOu0tJnMckzGhSnkm4XrJ3Y3VhFKJLsb3ieAszh6n5Anwr2Z3YjC4GG/VZKvobBB7iNGZhPCbiZ/73dz57nv2WoI4bWVxbTmU5evPXwO0coCun2ZGzas2idTzGAL7mYA3MRa+IWBkR3yqNuBAR63N3h8PeiLhc4a5GxMKaNMidlZqNw9iiRsOgHVMr3DxMrmFkE4dWtPxHsBCtV7gGGjV8wtvKYS/6pIY1QwMf8a7Cv0BfG+5iD9bkg184h0c4jFX4ITWoJjXnPi5Ka/wjc3Wcwv1avtEFvMopjZNGqR1P8UGq+ViMlkrTL5VtCkZJ0/EYl9Eo5rQPc9Cd7W68luZzfZP065jg34X5ivcMbtRbHKs4Lje0EQV6Mb/Cncg6f0XhKLaW7O4cub+J6CMpswL7cLwwyqIDOIQtUuod0ooeqQiexGRpRgewAweVHu2WGPryt2OZwZ2+jW1Yi5voycG6cBZnqgLNRAt0SB1/j9lYhGfS6zUiB+9r5vgHX5tdhF3e0gYAAAAASUVORK5CYII=]],
@@ -656,7 +662,7 @@ sidebarIconPNGs = nil
 
 local navDefs = {
     {"Walka", "+"}, {"Visuals", "O"},
-    {"List", "@"}, {"Ustawienia", "#"}
+    {"Misc", "*"}, {"List", "@"}, {"Ustawienia", "#"}
 }
 local selectedPage = "Walka"
 local pageTween, pageOutTween = nil, nil
@@ -762,6 +768,7 @@ end
 local pages = {
     Walka = createPage("Walka"),
     Visuals = createPage("Visuals", 0.52),
+    Misc = createPage("Misc"),
     List = createPage("List"),
     ["Ustawienia"] = createPage("Ustawienia"),
 }
@@ -907,7 +914,8 @@ for i, item in ipairs(navDefs) do
     local b = uiButton(side, "", key == selectedPage and INPUT or BAR)
     b.Size = UDim2.new(1, 0, 0, 46)
     b.Position = UDim2.fromOffset(0, (i-1)*54)
-    local iconText = uiText(b, "", 22, key == selectedPage and WHITE or MUTED)
+    local iconText = uiText(b, "", 22,
+        key == selectedPage and WHITE or MUTED)
     iconText.Size = UDim2.fromOffset(36, 40)
     iconText.Position = UDim2.fromOffset(12, 3)
     iconText.TextXAlignment = Enum.TextXAlignment.Center
@@ -1166,6 +1174,7 @@ local function buildControls(content)
         rec.draw=function(v) b.Text=tostring(v) end
         b.MouseButton1Click:Connect(function()
             closePopup()
+            headerTop.capturingBind = true
             b.Text="Press a key..."
             local listener
             listener=UserInputService.InputBegan:Connect(function(inp)
@@ -1177,6 +1186,7 @@ local function buildControls(content)
                     local key = inp.UserInputType==Enum.UserInputType.Keyboard
                         and inp.KeyCode.Name or inp.UserInputType.Name
                     rec:SetValue(key)
+                    task.defer(function() headerTop.capturingBind = false end)
                 end
             end)
         end)
@@ -1326,6 +1336,232 @@ local function buildControls(content)
     return controls
 end
 
+-- Misc movement tools, adapted from the supplied Specter Lua script.
+-- Isolated function scope prevents exceeding Luau's local-register limit.
+;(function()
+    local state = {
+        Fly = false, FlySpeed = 1, FlyKey = "p",
+        Noclip = false, Speed = false, SpeedMultiplier = 2,
+        NoclipOriginal = {},
+        FlyForce = nil, FlyRoot = nil, FlyHumanoid = nil,
+        SpeedHumanoid = nil, NormalWalkSpeed = nil,
+        Unloaded = false,
+    }
+
+    local function disableFly()
+        if state.FlyForce then
+            state.FlyForce:Destroy()
+            state.FlyForce = nil
+        end
+        if state.FlyHumanoid and state.FlyHumanoid.Parent
+            and state.FlyHumanoid.Health > 0 then
+            pcall(function()
+                state.FlyHumanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+            end)
+        end
+        state.FlyRoot = nil
+        state.FlyHumanoid = nil
+    end
+
+    local function disableSpeed()
+        if state.SpeedHumanoid and state.SpeedHumanoid.Parent
+            and state.NormalWalkSpeed then
+            pcall(function()
+                state.SpeedHumanoid.WalkSpeed = state.NormalWalkSpeed
+            end)
+        end
+        state.SpeedHumanoid = nil
+        state.NormalWalkSpeed = nil
+    end
+
+    local function restoreCollision()
+        for part, canCollide in pairs(state.NoclipOriginal) do
+            if part and part.Parent then
+                pcall(function() part.CanCollide = canCollide end)
+            end
+        end
+        table.clear(state.NoclipOriginal)
+    end
+
+    -- UI layout matches the current SpaceSolution style and config registry.
+    local noclip = buildControls(makePanel("Noclip", pages.Misc.columns[1]))
+    noclip:AddToggle("MiscNoclip", {
+        Text = "Noclip Enabled", Default = false
+    }):OnChanged(function()
+        state.Noclip = Toggles.MiscNoclip.Value
+        if not state.Noclip then restoreCollision() end
+    end)
+
+    local speed = buildControls(makePanel("Speed", pages.Misc.columns[1]))
+    speed:AddToggle("MiscSpeed", {
+        Text = "Speed Enabled", Default = false
+    }):OnChanged(function()
+        state.Speed = Toggles.MiscSpeed.Value
+        if not state.Speed then disableSpeed() end
+    end)
+    speed:AddSlider("MiscSpeedMultiplier", {
+        Text = "Speed Multiplier", Min = 1, Max = 10,
+        Default = 2, Rounding = 1
+    }):OnChanged(function()
+        state.SpeedMultiplier = math.clamp(
+            tonumber(Options.MiscSpeedMultiplier.Value) or 2, 1, 10)
+    end)
+
+    local fly = buildControls(makePanel("Fly", pages.Misc.columns[2]))
+    fly:AddToggle("MiscFly", {
+        Text = "Fly Enabled", Default = false
+    }):OnChanged(function()
+        state.Fly = Toggles.MiscFly.Value
+        if not state.Fly then disableFly() end
+    end)
+    fly:AddSlider("MiscFlySpeed", {
+        Text = "Fly Speed", Min = 1, Max = 10,
+        Default = 1, Rounding = 1
+    }):OnChanged(function()
+        state.FlySpeed = math.clamp(
+            tonumber(Options.MiscFlySpeed.Value) or 1, 1, 10)
+    end)
+    fly:AddKeyPicker("MiscFlyKey", {
+        Text = "Fly Key", Default = "F"
+    }):OnChanged(function()
+        state.FlyKey = tostring(Options.MiscFlyKey.Value or "p")
+    end)
+    fly:AddLabel("WASD: Move  |  Space: Up  |  Shift: Down")
+
+    -- The bind toggles the same GUI record used by the config system.
+    local keyConnection = UserInputService.InputBegan:Connect(function(input, processed)
+        if state.Unloaded or processed or headerTop.capturingBind then return end
+        if UserInputService:GetFocusedTextBox() then return end
+        local key = state.FlyKey
+        if input.KeyCode.Name == key or input.UserInputType.Name == key then
+            Toggles.MiscFly:SetValue(not Toggles.MiscFly.Value)
+        end
+    end)
+
+    -- Fly control: source uses camera-relative WASD and a 30*speed factor.
+    -- A BodyVelocity provides stable hovering between frames.
+    local flyConnection = RunService.Heartbeat:Connect(function()
+        if state.Unloaded then return end
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not state.Fly or not root or not humanoid or humanoid.Health <= 0 then
+            if state.FlyForce then disableFly() end
+            return
+        end
+
+        if state.FlyRoot ~= root or not state.FlyForce
+            or state.FlyForce.Parent ~= root then
+            disableFly()
+            local mover = Instance.new("BodyVelocity")
+            mover.Name = "SpaceSolutionFlyVelocity"
+            mover.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+            mover.P = 15000
+            mover.Velocity = Vector3.zero
+            mover.Parent = root
+            state.FlyForce = mover
+            state.FlyRoot = root
+            state.FlyHumanoid = humanoid
+        end
+
+        if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
+            humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+        end
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        local direction = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            direction += camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            direction -= camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            direction -= camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            direction += camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            direction += Vector3.yAxis
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            direction -= Vector3.yAxis
+        end
+        state.FlyForce.Velocity = (direction.Magnitude > 0
+            and direction.Unit or Vector3.zero) * (state.FlySpeed * 30)
+    end)
+
+    -- Same WalkSpeed multiplier and movement boost as the source script.
+    local speedConnection = RunService.Stepped:Connect(function()
+        if state.Unloaded then return end
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not state.Speed or state.Fly or not humanoid or humanoid.Health <= 0 then
+            if state.SpeedHumanoid then disableSpeed() end
+            return
+        end
+        if state.SpeedHumanoid ~= humanoid then
+            disableSpeed()
+            state.SpeedHumanoid = humanoid
+            state.NormalWalkSpeed = humanoid.WalkSpeed
+        end
+        humanoid.WalkSpeed = (state.NormalWalkSpeed or 16) * state.SpeedMultiplier
+        if root and humanoid.MoveDirection.Magnitude > 0 then
+            local boost = (state.SpeedMultiplier - 1) * 0.28
+            if boost > 0 then
+                root.CFrame += humanoid.MoveDirection * boost
+            end
+        end
+    end)
+
+    -- Restore each body's original CanCollide value after Noclip is disabled.
+    local noclipParts, noclipCharacter, noclipRefresh = {}, nil, 0
+    local noclipConnection = RunService.Stepped:Connect(function()
+        if state.Unloaded or not state.Noclip then return end
+        local character = LocalPlayer.Character
+        if not character then return end
+        local now = os.clock()
+        if character ~= noclipCharacter or now >= noclipRefresh then
+            noclipCharacter = character
+            noclipRefresh = now + 1
+            table.clear(noclipParts)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    noclipParts[#noclipParts + 1] = part
+                end
+            end
+        end
+        for _, part in ipairs(noclipParts) do
+            if part.Parent then
+                if state.NoclipOriginal[part] == nil then
+                    state.NoclipOriginal[part] = part.CanCollide
+                end
+                if part.CanCollide then part.CanCollide = false end
+            end
+        end
+    end)
+
+    local characterConnection = LocalPlayer.CharacterAdded:Connect(function()
+        disableFly()
+        disableSpeed()
+        restoreCollision()
+    end)
+
+    ui.Destroying:Connect(function()
+        state.Unloaded = true
+        keyConnection:Disconnect()
+        flyConnection:Disconnect()
+        speedConnection:Disconnect()
+        noclipConnection:Disconnect()
+        characterConnection:Disconnect()
+        disableFly()
+        disableSpeed()
+        restoreCollision()
+    end)
+end)()
+
 -- Settings page: Globals on the left, ConfigManager on the right.
 local menuKey = Enum.KeyCode.Delete
 local panicKey = nil
@@ -1341,15 +1577,15 @@ local watermarkGui = uiCreate("ScreenGui", {
 }, guiParent)
 local watermarkBar = uiCreate("Frame", {
     Name = "WatermarkBar", Position = UDim2.new(1, -292, 0, 12),
-    Size = UDim2.fromOffset(280, 26), BackgroundColor3 = Color3.fromRGB(24, 24, 30),
+    Size = UDim2.fromOffset(280, 32), BackgroundColor3 = Color3.fromRGB(24, 24, 30),
     BorderSizePixel = 0, Visible = false
 }, watermarkGui)
-uiRound(watermarkBar, 4)
+uiRound(watermarkBar, 5)
 uiCreate("UIStroke", {Color = Color3.fromRGB(105, 105, 116), Thickness = 1}, watermarkBar)
 local watermark = uiText(watermarkBar,
-    "SpaceSolution | User - " .. LocalPlayer.Name, 12, WHITE, true)
-watermark.Position = UDim2.fromOffset(9, 0)
-watermark.Size = UDim2.new(1, -18, 1, -2)
+    "SpaceSolution | User - " .. LocalPlayer.Name, 14, WHITE, true)
+watermark.Position = UDim2.fromOffset(12, 0)
+watermark.Size = UDim2.new(1, -24, 1, -2)
 local watermarkLine = uiCreate("Frame", {
     Position = UDim2.new(0, 0, 1, -2), Size = UDim2.new(1, 0, 0, 2),
     BackgroundColor3 = ACCENT, BorderSizePixel = 0
@@ -1357,6 +1593,64 @@ local watermarkLine = uiCreate("Frame", {
 Toggles.WaterMark:OnChanged(function()
     watermarkBar.Visible = Toggles.WaterMark.Value
 end)
+-- Custom username shown after "User -"; the SpaceSolution title stays fixed.
+-- Watermark User and Watermark Position are saved by ConfigManager.
+-- Keep this in a separate scope to avoid Luau's 200-local-register limit.
+do
+    local positionTween = nil
+    local textService = game:GetService("TextService")
+
+    local function getWatermarkPosition()
+        local width = watermarkBar.Size.X.Offset
+        local choice = Options.WatermarkPosition and Options.WatermarkPosition.Value or "Right"
+        if choice == "Left" then
+            return UDim2.new(0, 12, 0, 12)
+        elseif choice == "Center" then
+            return UDim2.new(0.5, -width / 2, 0, 12)
+        end
+        return UDim2.new(1, -width - 12, 0, 12)
+    end
+
+    local function updateWatermarkUser()
+        local userName = Options.WatermarkUser and Options.WatermarkUser.Value or LocalPlayer.Name
+        userName = tostring(userName):gsub("[%c]", " "):match("^%s*(.-)%s*$")
+        if userName == "" then userName = LocalPlayer.Name end
+
+        watermark.Text = "SpaceSolution | User - " .. userName
+        watermark.TextTruncate = Enum.TextTruncate.AtEnd
+        local textWidth = textService:GetTextSize(
+            watermark.Text, 14, Enum.Font.GothamBold, Vector2.new(2000, 32)
+        ).X
+        local camera = workspace.CurrentCamera
+        local screenWidth = camera and camera.ViewportSize.X or 800
+        local maxWidth = math.max(120, math.min(600, screenWidth - 24))
+        local width = math.clamp(math.ceil(textWidth + 28), math.min(200, maxWidth), maxWidth)
+        watermarkBar.Size = UDim2.fromOffset(width, 32)
+
+        if positionTween then positionTween:Cancel() end
+        watermarkBar.Position = getWatermarkPosition()
+    end
+
+    globalsControls:AddInput("WatermarkUser", {
+        Text = "Watermark User",
+        Placeholder = "Enter the username to display",
+        Default = LocalPlayer.Name,
+    }):OnChanged(updateWatermarkUser)
+
+    globalsControls:AddDropdown("WatermarkPosition", {
+        Text = "Watermark Position",
+        Values = {"Left", "Center", "Right"},
+        Default = "Right",
+    }):OnChanged(function()
+        if positionTween then positionTween:Cancel() end
+        positionTween = TweenService:Create(watermarkBar,
+            TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+            {Position = getWatermarkPosition()})
+        positionTween:Play()
+    end)
+
+    updateWatermarkUser()
+end
 -- Reconnect to the current server (or rejoin the same place if needed).
 globalsControls:AddButton("Reconnect", function()
     local TeleportService = game:GetService("TeleportService")
@@ -1500,7 +1794,9 @@ local ESPControls = ESPBox:AddTab("Visuals")
 
 ESPControls:AddToggle("SkeletonEnabled", {Text = "Skeleton ESP", Default = false}):AddColorPicker("SkeletonColor", {Default = Color3.fromRGB(255,255,255), Title = "Skeleton Color"})
 
-ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 1, Min = 1, Max = 5, Rounding = 1})
+ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 2.5, Min = 0.5, Max = 10, Rounding = 1})
+
+ESPControls:AddSlider("ESPUpdateRate", {Text = "ESP Update Rate (Hz)", Default = 60, Min = 15, Max = 180, Rounding = 0})
 
 ESPControls:AddToggle("HeadDotEnabled", {Text = "Head Dot", Default = false}):AddColorPicker("HeadDotColor", {Default = Color3.fromRGB(255,255,255), Title = "Head Dot Color"})
 
@@ -1533,6 +1829,33 @@ ESPControls:AddSlider("TracerThickness", {Text = "Tracers Thickness", Default = 
 ESPControls:AddToggle("NameESPEnabled", {Text = "Name ESP", Default = false}):AddColorPicker("NameESPColor", {Default = Color3.fromRGB(255,255,255), Title = "Name Color"})
 
 ESPControls:AddDropdown("ESPNameType", {Text = "Name Type", Default = "Display Name", Values = {"Display Name", "Username"}, AllowNull = false})
+
+-- Distance ESP calibration: screenshots show 110m in ESP versus 177.5m in the
+-- game's kill notification, so start with 177.5 / 110 = ~1.614.  The game may
+-- calculate distance differently; this slider lets the user fine tune the scale.
+ESPControls:AddToggle("DistanceESPEnabled", {Text = "Distance ESP", Default = false}):AddColorPicker("DistanceESPColor", {Default = Color3.fromRGB(255,255,255), Title = "Distance Color"})
+ESPControls:AddSlider("ESPDistanceCalibration", {
+    Text = "Distance Sync (x)", Default = 1.614,
+    Min = 0.5, Max = 3, Rounding = 3
+})
+
+ESPControls:AddDropdown("ESPDistancePosition", {
+    Text = "Distance Position",
+    Default = "Top",
+    Values = {"Top", "Bottom", "Right", "Left"},
+    AllowNull = false
+})
+
+-- Independent text-size sliders for actual in-game ESP labels.
+ESPControls:AddSlider("NameESPTextSize", {
+    Text = "Name ESP Text Size (in game)", Default = 15,
+    Min = 12, Max = 22, Rounding = 0
+})
+
+ESPControls:AddSlider("DistanceESPTextSize", {
+    Text = "Distance ESP Text Size (in game)", Default = 15,
+    Min = 12, Max = 22, Rounding = 0
+})
 
 ESPControls:AddToggle("ESPTeamCheck", {Text = "Team Check", Default = false})
 
@@ -1866,16 +2189,30 @@ previewDotStroke.Parent = previewHeadDot
 
 local previewName = Instance.new("TextLabel")
 previewName.Name = "PreviewName"
-previewName.Size = UDim2.fromOffset(190, 16)
+previewName.Size = UDim2.fromOffset(190, 26)
 previewName.Position = UDim2.fromOffset(7, 2)
 previewName.BackgroundTransparency = 1
 previewName.Text = "Player"
 previewName.TextColor3 = Color3.new(1, 1, 1)
-previewName.TextSize = 13
-previewName.Font = Enum.Font.GothamSemibold
-previewName.TextStrokeTransparency = 0
+previewName.TextSize = 14
+previewName.Font = Enum.Font.Arial
+previewName.TextStrokeColor3 = Color3.new(0, 0, 0)
+previewName.TextStrokeTransparency = 1
 previewName.ZIndex = 12
 previewName.Parent = previewCanvas
+
+-- Preview for the independent Distance ESP toggle.
+-- Scoped to avoid adding top-level locals (Luau 200-register limit).
+do
+    local distanceLabel = previewName:Clone()
+    distanceLabel.Name = "PreviewDistance"
+    distanceLabel.Text = "180.8m" -- default preview at 400 studs, with calibration
+    distanceLabel.Size = UDim2.fromOffset(60, 26)
+    distanceLabel.Position = UDim2.fromOffset(72, 18)
+    distanceLabel.TextXAlignment = Enum.TextXAlignment.Center
+    distanceLabel.Visible = false
+    distanceLabel.Parent = previewCanvas
+end
 
 local previewCaption = Instance.new("TextLabel")
 previewCaption.Name = "PreviewCaption"
@@ -1901,7 +2238,7 @@ end
 local function refreshESPPreview()
     local skeletonVisible = pToggle("SkeletonEnabled")
     local skeletonColor = pOption("SkeletonColor", Color3.new(1, 1, 1))
-    local skeletonThickness = pOption("SkeletonThickness", 1)
+    local skeletonThickness = pOption("SkeletonThickness", 2.5)
     for _, line in ipairs(previewBones) do
         line.Visible = skeletonVisible
         line.BackgroundColor3 = skeletonColor
@@ -1934,6 +2271,29 @@ local function refreshESPPreview()
     previewName.Visible = pToggle("NameESPEnabled")
     previewName.Text = pOption("ESPNameType", "Display Name") == "Username" and "Player_123" or "DisplayName"
     previewName.TextColor3 = pOption("NameESPColor", Color3.new(1, 1, 1))
+    previewName.TextSize = pOption("NameESPTextSize", 15)
+
+    local previewDistance = previewCanvas:FindFirstChild("PreviewDistance")
+    if previewDistance then
+        previewDistance.Visible = pToggle("DistanceESPEnabled")
+        -- Same distance multiplier as the in-game ESP; dummy is 400 studs away.
+        previewDistance.Text = string.format("%.1fm",
+            400 * 0.28 * (tonumber(pOption("ESPDistanceCalibration", 1.614)) or 1.614))
+        previewDistance.TextColor3 = pOption("DistanceESPColor", Color3.new(1, 1, 1))
+        previewDistance.TextSize = pOption("DistanceESPTextSize", 15)
+        local distancePosition = pOption("ESPDistancePosition", "Top")
+        if distancePosition == "Bottom" then
+            previewDistance.Position = UDim2.fromOffset(72, 218)
+        elseif distancePosition == "Left" then
+            previewDistance.Position = UDim2.fromOffset(-40, 109)
+        elseif distancePosition == "Right" then
+            previewDistance.Position = UDim2.fromOffset(186, 109)
+        else
+            previewDistance.Position = UDim2.fromOffset(
+                72, previewName.Visible and (2 + previewName.TextSize + 4) or 2
+            )
+        end
+    end
 
     local chams = pToggle("ChamsESPEnabled")
     local state = pOption("ESPPreviewChamsState", "Visible")
@@ -1964,76 +2324,43 @@ RunService.Heartbeat:Connect(function(dt)
     previewUpdateTime = previewUpdateTime + dt
     if previewUpdateTime < 0.1 then return end
     previewUpdateTime = 0
-    if not previewHost.Parent then return end
+    if not previewHost.Parent or selectedPage ~= "Visuals" then return end
     refreshESPPreview()
 end)
 
--- Joint-based skeleton: uses actual Motor6D joint positions instead of part centres.
+-- Skeleton ESP based on the supplied source: cached BasePart-to-BasePart connections.
+-- R6 and R15 parts are resolved once per character, not searched every frame.
+local function buildSkeletonConnections(character)
+    local head = character:FindFirstChild("Head")
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    local lowerTorso = character:FindFirstChild("LowerTorso")
+    local leftArm = character:FindFirstChild("Left Arm") or character:FindFirstChild("LeftUpperArm")
+    local rightArm = character:FindFirstChild("Right Arm") or character:FindFirstChild("RightUpperArm")
+    local leftLeg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftUpperLeg")
+    local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
+    local leftHand = character:FindFirstChild("LeftHand") or character:FindFirstChild("LeftLowerArm")
+    local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("RightLowerArm")
+    local leftFoot = character:FindFirstChild("LeftFoot") or character:FindFirstChild("LeftLowerLeg")
+    local rightFoot = character:FindFirstChild("RightFoot") or character:FindFirstChild("RightLowerLeg")
 
-local R15Bones = {
-
-    {"Neck", "Waist"},
-
-    {"Neck", "LeftShoulder"}, {"LeftShoulder", "LeftElbow"}, {"LeftElbow", "LeftWrist"},
-
-    {"Neck", "RightShoulder"}, {"RightShoulder", "RightElbow"}, {"RightElbow", "RightWrist"},
-
-    {"Waist", "LeftHip"}, {"LeftHip", "LeftKnee"}, {"LeftKnee", "LeftAnkle"},
-
-    {"Waist", "RightHip"}, {"RightHip", "RightKnee"}, {"RightKnee", "RightAnkle"}
-
-}
-
-local R6Bones = {
-
-    {"Neck", "RootJoint"},
-
-    {"Neck", "Left Shoulder"}, {"Left Shoulder", "LeftHandEnd"},
-
-    {"Neck", "Right Shoulder"}, {"Right Shoulder", "RightHandEnd"},
-
-    {"RootJoint", "Left Hip"}, {"Left Hip", "LeftFootEnd"},
-
-    {"RootJoint", "Right Hip"}, {"Right Hip", "RightFootEnd"}
-
-}
-
-local function skeletonAnchors(character, rigType)
-
-    local anchors = {}
-
-    for _, descendant in ipairs(character:GetDescendants()) do
-
-        if descendant:IsA("Motor6D") and descendant.Part0 then
-
-            anchors[descendant.Name] = descendant.Part0.CFrame:PointToWorldSpace(descendant.C0.Position)
-
+    local connections = {}
+    local function connect(part1, part2)
+        if part1 and part2 then
+            connections[#connections + 1] = {part1, part2}
         end
-
     end
 
-    if rigType == Enum.HumanoidRigType.R6 then
-
-        local leftArm = character:FindFirstChild("Left Arm")
-
-        local rightArm = character:FindFirstChild("Right Arm")
-
-        local leftLeg = character:FindFirstChild("Left Leg")
-
-        local rightLeg = character:FindFirstChild("Right Leg")
-
-        if leftArm then anchors.LeftHandEnd = leftArm.CFrame:PointToWorldSpace(Vector3.new(0, -leftArm.Size.Y * 0.48, 0)) end
-
-        if rightArm then anchors.RightHandEnd = rightArm.CFrame:PointToWorldSpace(Vector3.new(0, -rightArm.Size.Y * 0.48, 0)) end
-
-        if leftLeg then anchors.LeftFootEnd = leftLeg.CFrame:PointToWorldSpace(Vector3.new(0, -leftLeg.Size.Y * 0.48, 0)) end
-
-        if rightLeg then anchors.RightFootEnd = rightLeg.CFrame:PointToWorldSpace(Vector3.new(0, -rightLeg.Size.Y * 0.48, 0)) end
-
-    end
-
-    return anchors
-
+    connect(head, torso)
+    connect(torso, lowerTorso)
+    connect(torso, leftArm)
+    connect(torso, rightArm)
+    connect(leftArm, leftHand)
+    connect(rightArm, rightHand)
+    connect(lowerTorso or torso, leftLeg)
+    connect(lowerTorso or torso, rightLeg)
+    connect(leftLeg, leftFoot)
+    connect(rightLeg, rightFoot)
+    return connections
 end
 
 local ESPObjects = {}
@@ -2056,9 +2383,14 @@ local function createESP(player)
 
     if player == LocalPlayer or ESPObjects[player] then return end
 
-    local obj = {Bones = {}}
+    local obj = {
+        Bones = {},
+        SkeletonConnections = {},
+        SkeletonCharacter = nil,
+        SkeletonRefreshAt = 0,
+    }
 
-    for i = 1, #R15Bones do obj.Bones[i] = newLine() end
+    for i = 1, 10 do obj.Bones[i] = newLine() end
 
     obj.Box = Drawing.new("Square")
 
@@ -2090,17 +2422,42 @@ local function createESP(player)
 
     obj.Tracer = newLine()
 
+    -- Background drawing objects retained for compatibility, but disabled
+    -- to keep the in-game Arial ESP labels clean and borderless.
+    obj.NameBG = Drawing.new("Square")
+    obj.NameBG.Visible = false
+    obj.NameBG.Filled = true
+    obj.NameBG.Color = Color3.fromRGB(9, 11, 16)
+    obj.NameBG.Transparency = 0.58
+    obj.NameBG.Thickness = 0
+
+    obj.DistanceBG = Drawing.new("Square")
+    obj.DistanceBG.Visible = false
+    obj.DistanceBG.Filled = true
+    obj.DistanceBG.Color = Color3.fromRGB(9, 11, 16)
+    obj.DistanceBG.Transparency = 0.58
+    obj.DistanceBG.Thickness = 0
+
     obj.Name = Drawing.new("Text")
 
     obj.Name.Visible = false
 
     obj.Name.Center = true
 
-    obj.Name.Outline = true
+    obj.Name.Outline = false
 
-    obj.Name.Size = 14
+    obj.Name.Size = 15
+    obj.Name.Font = 0 -- Drawing UI font: Arial-style text in the actual game ESP.
 
     obj.Name.Transparency = 1
+
+    obj.Distance = Drawing.new("Text")
+    obj.Distance.Visible = false
+    obj.Distance.Center = true
+    obj.Distance.Outline = false
+    obj.Distance.Size = 15
+    obj.Distance.Font = 0 -- Drawing UI font: Arial-style text in the actual game ESP.
+    obj.Distance.Transparency = 1
 
     ESPObjects[player] = obj
 
@@ -2119,6 +2476,10 @@ local function hideESP(obj)
     obj.HeadDot.Visible = false
 
     obj.Name.Visible = false
+    obj.NameBG.Visible = false
+
+    obj.Distance.Visible = false
+    obj.DistanceBG.Visible = false
 
     if obj.Highlight then obj.Highlight.Enabled = false end
 
@@ -2141,6 +2502,10 @@ local function removeESP(player)
     obj.HeadDot:Remove()
 
     obj.Name:Remove()
+    obj.NameBG:Remove()
+
+    obj.Distance:Remove()
+    obj.DistanceBG:Remove()
 
     if obj.Highlight then obj.Highlight:Destroy() end
 
@@ -2172,50 +2537,50 @@ local function updateESP(player, obj)
 
     end
 
-    local bones = humanoid.RigType == Enum.HumanoidRigType.R6 and R6Bones or R15Bones
+    -- Fast off-screen rejection before 3D bounding boxes and bone projection.
+    local rootScreen, rootOnScreen = camera:WorldToViewportPoint(root.Position)
+    if rootScreen.Z <= 0 or not rootOnScreen then
+        hideESP(obj)
+        return
+    end
 
     if Toggles.SkeletonEnabled.Value then
-
-        local anchors = skeletonAnchors(character, humanoid.RigType)
-
-        for i, line in ipairs(obj.Bones) do
-
-            local bone = bones[i]
-
-            local p1 = bone and anchors[bone[1]]
-
-            local p2 = bone and anchors[bone[2]]
-
-            line.Visible = false
-
-            if p1 and p2 then
-
-                local a, aVisible = camera:WorldToViewportPoint(p1)
-
-                local b, bVisible = camera:WorldToViewportPoint(p2)
-
-                if aVisible and bVisible and a.Z > 0 and b.Z > 0 then
-
-                    line.From = Vector2.new(a.X, a.Y)
-
-                    line.To = Vector2.new(b.X, b.Y)
-
-                    line.Color = Options.SkeletonColor.Value
-
-                    line.Thickness = Options.SkeletonThickness.Value
-
-                    line.Visible = true
-
-                end
-
-            end
-
+        -- Rebuild connections on respawn; retry briefly when streamed parts are missing.
+        local now = os.clock()
+        if obj.SkeletonCharacter ~= character or now >= obj.SkeletonRefreshAt then
+            obj.SkeletonCharacter = character
+            obj.SkeletonConnections = buildSkeletonConnections(character)
+            local expectedCount = character:FindFirstChild("Torso") and 5 or 10
+            obj.SkeletonRefreshAt = now + (#obj.SkeletonConnections < expectedCount and 1.5 or 10)
         end
 
+        -- The supplied source fades skeleton lines with distance (500 studs).
+        local distance = (root.Position - myRoot.Position).Magnitude
+        local transparency = math.clamp(1 - distance / 500, 0.3, 1)
+        local thickness = Options.SkeletonThickness.Value
+        local color = Options.SkeletonColor.Value
+
+        for i, line in ipairs(obj.Bones) do
+            local connection = obj.SkeletonConnections[i]
+            line.Visible = false
+            if connection then
+                local part1, part2 = connection[1], connection[2]
+                if part1.Parent == character and part2.Parent == character then
+                    local pos1, onScreen1 = camera:WorldToViewportPoint(part1.Position)
+                    local pos2, onScreen2 = camera:WorldToViewportPoint(part2.Position)
+                    if onScreen1 and onScreen2 and pos1.Z > 0 and pos2.Z > 0 then
+                        line.From = Vector2.new(pos1.X, pos1.Y)
+                        line.To = Vector2.new(pos2.X, pos2.Y)
+                        line.Color = color
+                        line.Thickness = thickness
+                        line.Transparency = transparency
+                        line.Visible = true
+                    end
+                end
+            end
+        end
     else
-
         for _, line in ipairs(obj.Bones) do line.Visible = false end
-
     end
 
 -- Head Dot uses identical pixel radius for all players, regardless of camera distance.
@@ -2254,13 +2619,12 @@ local function updateESP(player, obj)
 
     for _, line in ipairs(obj.Corners) do line.Visible = false end
 
-    if Toggles.BoxESPEnabled.Value then
+    local minX, minY = math.huge, math.huge
+    local maxX, maxY = -math.huge, -math.huge
+    local count = 0
 
-        local minX, minY = math.huge, math.huge
-
-        local maxX, maxY = -math.huge, -math.huge
-
-        local count = 0
+    if Toggles.BoxESPEnabled.Value or Toggles.DistanceESPEnabled.Value
+        or Toggles.NameESPEnabled.Value then
 
 -- Bounding box from the character's actual 3D extents.
 
@@ -2296,7 +2660,7 @@ local function updateESP(player, obj)
 
         end
 
-        if count == 8 then
+        if count == 8 and Toggles.BoxESPEnabled.Value then
 
             local width, height = maxX - minX, maxY - minY
 
@@ -2380,38 +2744,79 @@ local function updateESP(player, obj)
 
     end
 
+    -- In-game ESP text: position using projected character bounds (not the
+    -- dummy preview), and keep the name and distance on separate lines.
     obj.Name.Visible = false
+    obj.Distance.Visible = false
+    obj.NameBG.Visible = false
+    obj.DistanceBG.Visible = false
+    obj._espDistance = (root.Position - myRoot.Position).Magnitude
 
-    if Toggles.NameESPEnabled.Value then
+    local nameLabelSize = Options.NameESPTextSize and Options.NameESPTextSize.Value or 15
+    local distanceLabelSize = Options.DistanceESPTextSize and Options.DistanceESPTextSize.Value or 15
+    obj.Name.Size = nameLabelSize
+    obj.Distance.Size = distanceLabelSize
 
-        local head = character:FindFirstChild("Head")
+    local centreX, centreY
+    if count == 8 and onScreen and pos.Z > 0 then
+        centreX = (minX + maxX) * 0.5
+        centreY = (minY + maxY) * 0.5
+    elseif onScreen and pos.Z > 0 then
+        centreX, centreY = pos.X, pos.Y
+        minX, maxX = pos.X - 22, pos.X + 22
+        minY, maxY = pos.Y - 48, pos.Y + 48
+    end
 
-        if head then
+    local placement = Options.ESPDistancePosition
+        and Options.ESPDistancePosition.Value or "Top"
+    local distanceOnTop = Toggles.DistanceESPEnabled.Value and placement == "Top"
 
-            local headPos, headVisible = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
-
-            local showName = headVisible and headPos.Z > 0
-
-            if showName then
-
-                obj.Name.Text = Options.ESPNameType.Value == "Username" and player.Name or player.DisplayName
-
-                obj.Name.Position = Vector2.new(headPos.X, headPos.Y)
-
-                obj.Name.Color = Options.NameESPColor.Value
-
-                obj.Name.Visible = true
-
+    if centreX then
+        if Toggles.NameESPEnabled.Value then
+            local displayName = Options.ESPNameType.Value == "Username"
+                and player.Name or player.DisplayName
+            -- Extremely long usernames obscure nearby players. Keep the full
+            -- value in the game; shorten only the rendered label.
+            if #displayName > 24 then
+                displayName = string.sub(displayName, 1, 21) .. "..."
             end
-
+            obj.Name.Text = displayName
+            obj.Name.Position = Vector2.new(
+                centreX, minY - (distanceOnTop
+                    and (nameLabelSize + distanceLabelSize + 12)
+                    or (nameLabelSize + 8))
+            )
+            obj.Name.Color = Options.NameESPColor.Value
+            obj.Name.Visible = true
         end
 
+        if Toggles.DistanceESPEnabled.Value then
+            -- Shared calibrated scale with ESP Preview (one decimal like kill feed).
+            obj.Distance.Text = string.format("%.1fm",
+                obj._espDistance * 0.28 * (tonumber(Options.ESPDistanceCalibration.Value) or 1.614))
+            obj.Distance.Color = Options.DistanceESPColor.Value
+            if placement == "Bottom" then
+                obj.Distance.Position = Vector2.new(centreX, maxY + 7)
+            elseif placement == "Left" then
+                -- Exact text width is applied later by the screen-space layout.
+                obj.Distance.Position = Vector2.new(minX - 14, centreY - distanceLabelSize * 0.5)
+            elseif placement == "Right" then
+                obj.Distance.Position = Vector2.new(maxX + 14, centreY - distanceLabelSize * 0.5)
+            else
+                obj.Distance.Position = Vector2.new(centreX, minY - distanceLabelSize - 5)
+            end
+            obj.Distance.Visible = true
+        end
     end
 
 -- A camera-to-target ray determines whether geometry blocks the character.-- Ignore the local character and the target itself.
 
     local function isCharacterVisible()
-
+        local now = os.clock()
+        if obj.VisibilityCharacter == character and obj.VisibilityUntil
+            and now < obj.VisibilityUntil then
+            return obj.CachedVisible
+        end
         local origin = camera.CFrame.Position
 
         local direction = root.Position - origin
@@ -2436,7 +2841,10 @@ local function updateESP(player, obj)
 
         local hit = workspace:Raycast(origin, direction, params)
 
-        return hit == nil
+        obj.VisibilityCharacter = character
+        obj.VisibilityUntil = now + 0.10
+        obj.CachedVisible = hit == nil
+        return obj.CachedVisible
 
     end
 
@@ -2486,15 +2894,142 @@ Players.PlayerAdded:Connect(createESP)
 
 Players.PlayerRemoving:Connect(removeESP)
 
-RunService.RenderStepped:Connect(function()
-
-    for player, obj in pairs(ESPObjects) do
-
-        updateESP(player, obj)
-
+-- Resolve on-screen collisions between the REAL Drawing labels every frame.
+-- Scoped to avoid adding to the main chunk's 200-local-register limit.
+do
+    local function getLabelSize(label)
+        local ok, bounds = pcall(function() return label.TextBounds end)
+        if ok and bounds and bounds.X and bounds.X > 0 then
+            return bounds.X, math.max(label.Size + 3, bounds.Y)
+        end
+        return math.max(24, #tostring(label.Text) * label.Size * 0.55), label.Size + 3
     end
 
-end)
+    local function overlaps(a, b)
+        return a.x < b.x + b.w + 4 and a.x + a.w + 4 > b.x
+            and a.y < b.y + b.h + 4 and a.y + a.h + 4 > b.y
+    end
+
+    -- Adjustable ESP budget (15–180 Hz); at low FPS naturally updates per frame.
+    -- Allows the user to trade render smoothness for CPU/GPU load.
+    local espElapsed = 0
+    local espHidden = false
+    RunService.RenderStepped:Connect(function(dt)
+        local enabled = Toggles.SkeletonEnabled.Value or Toggles.HeadDotEnabled.Value
+            or Toggles.BoxESPEnabled.Value or Toggles.TracerESPEnabled.Value
+            or Toggles.NameESPEnabled.Value or Toggles.DistanceESPEnabled.Value
+            or Toggles.ChamsESPEnabled.Value
+        if not enabled then
+            if not espHidden then
+                for _, obj in pairs(ESPObjects) do hideESP(obj) end
+                espHidden = true
+            end
+            return
+        end
+        espHidden = false
+        espElapsed = espElapsed + dt
+        local rate = math.clamp(tonumber(Options.ESPUpdateRate.Value) or 60, 15, 180)
+        if espElapsed < 1 / rate then return end
+        espElapsed = 0
+        for player, obj in pairs(ESPObjects) do
+            updateESP(player, obj)
+        end
+
+        -- Skip label sorting and overlap checks if both text ESPs are off.
+        if not Toggles.NameESPEnabled.Value and not Toggles.DistanceESPEnabled.Value then return end
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        local viewport = camera.ViewportSize
+        local labels = {}
+
+        for player, obj in pairs(ESPObjects) do
+            if obj.Name.Visible then
+                labels[#labels + 1] = {
+                    label = obj.Name, bg = obj.NameBG,
+                    depth = obj._espDistance or math.huge,
+                    id = player.UserId, order = 1
+                }
+            end
+            if obj.Distance.Visible then
+                labels[#labels + 1] = {
+                    label = obj.Distance, bg = obj.DistanceBG,
+                    depth = obj._espDistance or math.huge,
+                    id = player.UserId, order = 2,
+                    side = Options.ESPDistancePosition
+                        and Options.ESPDistancePosition.Value or "Top",
+                }
+            end
+        end
+
+        -- Closest players get the clearest placement. Stable IDs prevent
+        -- labels from randomly swapping order as pairs() iterates.
+        table.sort(labels, function(a, b)
+            if math.abs(a.depth - b.depth) > 0.1 then
+                return a.depth < b.depth
+            end
+            if a.id ~= b.id then return a.id < b.id end
+            return a.order < b.order
+        end)
+
+        local occupied = {}
+        for _, entry in ipairs(labels) do
+            local label = entry.label
+            local width, height = getLabelSize(label)
+            local desired = label.Position
+            local x = desired.X
+            local y = desired.Y
+            if entry.side == "Left" then
+                x = x - width * 0.5
+            elseif entry.side == "Right" then
+                x = x + width * 0.5
+            end
+
+            x = math.clamp(x, width * 0.5 + 6,
+                math.max(width * 0.5 + 6, viewport.X - width * 0.5 - 6))
+            y = math.clamp(y, 5, math.max(5, viewport.Y - height - 5))
+
+            local chosen = nil
+            -- Try the natural position, then nearby vertical lanes to keep
+            -- overlapping usernames and distance labels readable.
+            for attempt = 0, 14 do
+                local shift = 0
+                if attempt > 0 then
+                    local lane = math.ceil(attempt / 2)
+                    shift = (attempt % 2 == 1 and -1 or 1) * lane * (height + 6)
+                end
+                local candidateY = y + shift
+                if candidateY >= 5 and candidateY + height < viewport.Y - 5 then
+                    local rect = {x = x - width * 0.5, y = candidateY,
+                        w = width, h = height}
+                    local free = true
+                    for _, other in ipairs(occupied) do
+                        if overlaps(rect, other) then
+                            free = false
+                            break
+                        end
+                    end
+                    if free then
+                        chosen = rect
+                        break
+                    end
+                end
+            end
+
+            if chosen then
+                label.Position = Vector2.new(chosen.x + width * 0.5, chosen.y)
+                entry.bg.Position = Vector2.new(chosen.x - 5, chosen.y - 2)
+                entry.bg.Size = Vector2.new(width + 10, height + 4)
+                entry.bg.Visible = false -- No dark background behind in-game ESP text.
+                occupied[#occupied + 1] = chosen
+            else
+                -- When too many players are stacked together, hide the
+                -- unplaceable label instead of drawing unreadable text piles.
+                label.Visible = false
+                entry.bg.Visible = false
+            end
+        end
+    end)
+end
 
 -- Aim modes: the Enabled checkbox mirrors the real active state.
 
@@ -2705,6 +3240,14 @@ end)
 
     end)
 
+    -- For client-side ray-based weapons, cast against the selected character
+    -- instead of the map geometry. Server-validated weapons can still reject hits.
+    Main:AddToggle("MagicBullet", {
+        Text = "Magic Bullet", Default = SilentAimSettings.MagicBullet
+    }):OnChanged(function()
+        SilentAimSettings.MagicBullet = Toggles.MagicBullet.Value
+    end)
+
     Main:AddDropdown("TargetPart", {AllowNull = true, Text = "Target Part", Default = SilentAimSettings.TargetPart, Values = {"Head", "HumanoidRootPart", "Random"}}):OnChanged(function()
 
         SilentAimSettings.TargetPart = Options.TargetPart.Value
@@ -2758,6 +3301,7 @@ end)() -- Silent Aim controls in their own function scope
 local TriggerBotSettings = {
     Enabled = false,
     TeamCheck = false,
+    VisibleCheck = false,
     Delay = 0.12,
     ToggleKey = "T",
     TargetHead = false,
@@ -2795,22 +3339,72 @@ local function syncTriggerEnabled()
     end
 end
 
+-- A filtered camera ray finds players under the crosshair even when a wall
+-- is in front of them. Visible Check independently decides whether walls block.
+local triggerTargetRayParams = RaycastParams.new()
+triggerTargetRayParams.FilterType = Enum.RaycastFilterType.Include
+triggerTargetRayParams.IgnoreWater = true
+
+local triggerVisibilityRayParams = RaycastParams.new()
+triggerVisibilityRayParams.FilterType = Enum.RaycastFilterType.Exclude
+triggerVisibilityRayParams.IgnoreWater = true
+
 local function triggerTargetValid()
-    local part = Mouse.Target
-    if not part then return false end
-    local model = part:FindFirstAncestorOfClass("Model")
-    if not model then return false end
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return false end
-    local player = Players:GetPlayerFromCharacter(model)
-    if not player or player == LocalPlayer then return false end
-    if TriggerBotSettings.TeamCheck and player.Team ~= nil
-        and player.Team == LocalPlayer.Team then return false end
-    -- Head and body are independent trigger zones.
-    if part.Name == "Head" then
-        return TriggerBotSettings.TargetHead
+    if not TriggerBotSettings.TargetHead and not TriggerBotSettings.TargetBody then
+        return false
     end
-    return TriggerBotSettings.TargetBody
+
+    local currentCamera = workspace.CurrentCamera
+    if not currentCamera then return false end
+
+    local targetParts = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer
+            and (not TriggerBotSettings.TeamCheck or player.Team == nil
+                or player.Team ~= LocalPlayer.Team) then
+            local character = player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                for _, part in ipairs(character:GetChildren()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        if (part.Name == "Head" and TriggerBotSettings.TargetHead)
+                            or (part.Name ~= "Head" and TriggerBotSettings.TargetBody) then
+                            table.insert(targetParts, part)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if #targetParts == 0 then return false end
+
+    -- ScreenPointToRay uses the same inset-adjusted mouse coordinates as Mouse.X/Y.
+    local aimRay = currentCamera:ScreenPointToRay(Mouse.X, Mouse.Y)
+    triggerTargetRayParams.FilterDescendantsInstances = targetParts
+    local hit = workspace:Raycast(aimRay.Origin, aimRay.Direction * 10000, triggerTargetRayParams)
+    if not hit then return false end
+
+    if TriggerBotSettings.VisibleCheck then
+        local targetCharacter = hit.Instance:FindFirstAncestorOfClass("Model")
+        local ignored = {}
+        if LocalPlayer.Character then
+            table.insert(ignored, LocalPlayer.Character)
+        end
+        if targetCharacter then
+            table.insert(ignored, targetCharacter)
+        end
+        triggerVisibilityRayParams.FilterDescendantsInstances = ignored
+        -- Any object between the camera and target prevents the shot.
+        local obstacle = workspace:Raycast(
+            aimRay.Origin,
+            hit.Position - aimRay.Origin,
+            triggerVisibilityRayParams
+        )
+        if obstacle then return false end
+    end
+
+    return true
 end
 
 local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
@@ -2848,6 +3442,11 @@ local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
     }):OnChanged(function()
         TriggerBotSettings.TeamCheck = Toggles.TriggerTeamCheck.Value
     end)
+    Trigger:AddToggle("TriggerVisibleCheck", {
+        Text = "Visible Check", Default = false
+    }):OnChanged(function()
+        TriggerBotSettings.VisibleCheck = Toggles.TriggerVisibleCheck.Value
+    end)
     Trigger:AddToggle("TriggerTargetHead", {
         Text = "Target Head", Default = false
     }):OnChanged(function()
@@ -2884,22 +3483,411 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
+do
+local lastTriggerCheck = 0
 RunService.RenderStepped:Connect(function()
     if not TriggerBotSettings.Enabled then return end
-    if not triggerTargetValid() then return end
     local now = os.clock()
+    if now - lastTriggerCheck < 1 / 30 then return end
+    lastTriggerCheck = now
     if now - triggerLastShot < TriggerBotSettings.Delay then return end
+    if not triggerTargetValid() then return end
     if type(mouse1click) == "function" then
         triggerLastShot = now
+        if headerTop.SoundShot then headerTop.SoundShot() end
         mouse1click()
     elseif type(mouse1press) == "function" and type(mouse1release) == "function" then
         triggerLastShot = now
+        if headerTop.SoundShot then headerTop.SoundShot() end
         mouse1press()
         task.defer(mouse1release)
     end
 end)
+end
 
 end)() -- Trigger Bot isolated to keep main-chunk register usage low
+
+-- SpaceSolution client-side Hit/Kill Sounds.
+-- The game-specific weapon's server acknowledgement is unavailable in a universal script.
+-- Attribute feedback to recent local shots and/or a Humanoid's "creator" tag.
+;(function()
+    local soundService = game:GetService("SoundService")
+    local presets = {
+        Ping = "rbxasset://sounds/electronicpingshort.wav",
+        Button = "rbxasset://sounds/button.wav",
+        Switch = "rbxasset://sounds/switch.wav",
+    }
+    local soundObjects = {}
+    local watched = {}
+    local playerConnections = {}
+    local connections = {}
+    local markedShots = {}
+    local assetCache = {} -- Resolve custom audio files once, not on every hit.
+    local shotWindow = 1.25
+
+    -- Kill sound files belong in this folder in the executor's workspace.
+    -- Creates the folder once; does not overwrite the user's audio files.
+    local killSoundFolder = MainFileName .. "/KillSounds"
+    local noKillFiles = "(No audio files found)"
+
+    local function ensureKillSoundFolder()
+        if type(makefolder) ~= "function" then return end
+        if type(isfolder) == "function" then
+            local ok, exists = pcall(isfolder, killSoundFolder)
+            if ok and exists then return end
+        end
+        pcall(makefolder, killSoundFolder)
+    end
+
+    local function listKillSoundFiles()
+        ensureKillSoundFolder()
+        local choices = {}
+        if type(listfiles) == "function" then
+            local ok, paths = pcall(listfiles, killSoundFolder)
+            if ok and type(paths) == "table" then
+                for _, path in ipairs(paths) do
+                    local filename = tostring(path):gsub("\\", "/"):match("([^/]+)$")
+                    local lower = filename and filename:lower() or ""
+                    if (lower:match("%.mp3$") or lower:match("%.wav$")
+                        or lower:match("%.ogg$") or lower:match("%.vsnd_c$"))
+                        and not table.find(choices, filename) then
+                        table.insert(choices, filename)
+                    end
+                end
+            end
+        end
+        table.sort(choices, function(a, b) return a:lower() < b:lower() end)
+        if #choices == 0 then choices[1] = noKillFiles end
+        return choices
+    end
+
+    -- Helpful instructions are generated inside the folder if possible.
+    ensureKillSoundFolder()
+    if type(writefile) == "function" and type(isfile) == "function" then
+        local guidePath = killSoundFolder .. "/README.txt"
+        local ok, exists = pcall(isfile, guidePath)
+        if ok and not exists then
+            pcall(writefile, guidePath, "SpaceSolution - KillSounds\n\n"
+                .. "Drop your .mp3, .wav or .ogg files in this directory.\n"
+                .. "For .vsnd_c, export a .wav or .mp3 with the same name when possible.\n"
+                .. "In Misc > Hit & Kill Sounds, choose Kill Sound: Folder,\n"
+                .. "then Rescan Custom Sound Files and select a file.\n")
+        end
+    end
+
+    local function soundId(kind)
+        local selected = Options[kind .. "SoundPreset"] and Options[kind .. "SoundPreset"].Value or "Ping"
+        local value
+        if kind == "Kill" and selected == "Folder" then
+            -- Only accept filenames returned from our directory, never path traversal.
+            local filename = Options.KillSoundFile and Options.KillSoundFile.Value
+            if type(filename) ~= "string" or filename == noKillFiles
+                or filename:find("/", 1, true) or filename:find("\\", 1, true)
+                or not (filename:lower():match("%.mp3$")
+                    or filename:lower():match("%.wav$")
+                    or filename:lower():match("%.ogg$")
+                    or filename:lower():match("%.vsnd_c$")) then
+                return nil
+            end
+            value = killSoundFolder .. "/" .. filename
+        elseif selected == "Custom" then
+            value = tostring(Options[kind .. "CustomSound"] and Options[kind .. "CustomSound"].Value or "")
+        else
+            return presets[selected] or presets.Ping
+        end
+        value = value:match("^%s*(.-)%s*$")
+        if value == "" then return nil end
+        local numericId = value:match("^(%d+)$") or value:match("^rbxassetid://(%d+)$")
+        if not numericId and value:match("^https?://") then
+            numericId = value:match("[?&]id=(%d+)")
+                or value:match("/catalog/(%d+)")
+                or value:match("/library/(%d+)")
+                or value:match("/audio/(%d+)")
+        end
+        if numericId then return "rbxassetid://" .. numericId end
+        if value:match("^rbxasset://sounds/[%w_%-./]+$") then return value end
+        -- Local audio needs an executor asset loader. Source 2 .vsnd_c is NOT
+        -- directly decodable by Roblox Sound. Support a matching exported file,
+        -- or extract a recognizable MP3/OGG/WAV payload when one is embedded.
+        -- Other Source 2 encodings must be exported with Source 2 Viewer first.
+        if assetCache[value] ~= nil then return assetCache[value] or nil end
+        local assetFunction = type(getcustomasset) == "function" and getcustomasset
+            or type(getsynasset) == "function" and getsynasset
+        if type(assetFunction) ~= "function" then
+            warn("SpaceSolution Sounds: local files require getcustomasset/getsynasset")
+            assetCache[value] = false
+            return nil
+        end
+
+        local filePath = value
+        if value:lower():match("%.vsnd_c$") then
+            local base = value:sub(1, -8) -- remove the seven-character .vsnd_c extension
+            filePath = nil
+            -- A converted file with the same name takes priority.
+            if type(isfile) == "function" then
+                for _, ext in ipairs({"mp3", "wav", "ogg"}) do
+                    local candidate = base .. "." .. ext
+                    if isfile(candidate) then
+                        filePath = candidate
+                        break
+                    end
+                end
+            end
+            -- Best-effort extraction only for standard embedded formats.
+            -- A compiled .vsnd_c may instead store PCM/ADPCM or a packed stream.
+            if not filePath and type(readfile) == "function"
+                and type(writefile) == "function"
+                and type(isfile) == "function" and isfile(value) then
+                local readOK, data = pcall(readfile, value)
+                if readOK and type(data) == "string" and #data <= 16 * 1024 * 1024 then
+                    local offset, ext
+                    local ogg = data:find("OggS", 17, true)
+                    local mp3 = data:find("ID3", 17, true)
+                    local wav = data:find("RIFF", 17, true)
+                    if wav and data:sub(wav + 8, wav + 11) ~= "WAVE" then wav = nil end
+                    if ogg then
+                        offset, ext = ogg, "ogg"
+                    elseif mp3 then
+                        offset, ext = mp3, "mp3"
+                    elseif wav then
+                        offset, ext = wav, "wav"
+                    end
+                    if offset then
+                        local hash = 5381
+                        for i = 1, #value do
+                            hash = (hash * 33 + value:byte(i)) % 2147483647
+                        end
+                        local extracted = string.format("%s/vsndc_audio_%d.%s", MainFileName, hash, ext)
+                        local writeOK = pcall(writefile, extracted, data:sub(offset))
+                        if writeOK then filePath = extracted end
+                    end
+                end
+            end
+            if not filePath then
+                warn("SpaceSolution Sounds: cannot decode " .. value
+                    .. "; export it as .mp3 or .wav in Source 2 Viewer and use the same filename")
+                assetCache[value] = false
+                return nil
+            end
+        elseif not (value:lower():match("%.mp3$") or value:lower():match("%.ogg$")
+            or value:lower():match("%.wav$")) then
+            assetCache[value] = false
+            return nil
+        end
+
+        if type(isfile) == "function" and not isfile(filePath) then
+            warn("SpaceSolution Sounds: file not found: " .. filePath)
+            assetCache[value] = false
+            return nil
+        end
+        local ok, asset = pcall(assetFunction, filePath)
+        if ok and type(asset) == "string" and asset ~= "" then
+            assetCache[value] = asset
+            return asset
+        end
+        warn("SpaceSolution Sounds: asset loader failed for " .. filePath)
+        assetCache[value] = false
+        return nil
+    end
+
+    local function play(kind, force)
+        local enabled = Toggles[kind .. "SoundsEnabled"]
+        if not force and (not enabled or not enabled.Value) then return end
+        local id = soundId(kind)
+        if not id then return end
+        local sound = soundObjects[kind]
+        if not sound then
+            sound = Instance.new("Sound")
+            sound.Name = "SpaceSolution" .. kind .. "Sound"
+            sound.Parent = soundService
+            soundObjects[kind] = sound
+        end
+        if sound.SoundId ~= id then sound.SoundId = id end
+        sound.Volume = math.clamp(tonumber(Options[kind .. "SoundVolume"] and Options[kind .. "SoundVolume"].Value) or 0.8, 0, 2)
+        sound.PlaybackSpeed = math.clamp(tonumber(Options[kind .. "SoundPitch"] and Options[kind .. "SoundPitch"].Value) or 1, 0.5, 2)
+        sound:Stop()
+        sound.TimePosition = 0
+        sound:Play()
+    end
+
+    -- GUI lives in Misc, on its own panel (saved by ConfigManager).
+    local feedback = buildControls(makePanel("Hit & Kill Sounds", pages.Misc.columns[2]))
+    feedback:AddLabel("KillSounds folder: " .. killSoundFolder)
+    feedback:AddLabel("Drop MP3 / WAV / OGG / VSND_C files there, then Rescan")
+    feedback:AddLabel("Sounds: Sound ID, MP3, WAV, OGG or VSND_C path")
+    feedback:AddLabel("VSND_C: direct playback unsupported; exported audio or embedded streams only")
+    feedback:AddLabel("For other VSND_C files, export MP3/WAV with Source 2 Viewer")
+    feedback:AddToggle("HitSoundsEnabled", {Text = "Hit Sounds", Default = false})
+    feedback:AddDropdown("HitSoundPreset", {
+        Text = "Hit Sound", Values = {"Ping", "Button", "Switch", "Custom"},
+        Default = "Ping", AllowNull = false
+    })
+    feedback:AddInput("HitCustomSound", {
+        Text = "Custom Hit (ID / mp3 / wav / ogg / vsnd_c)",
+        Default = "", Placeholder = "123456789 or sounds/hit.vsnd_c"
+    })
+    feedback:AddSlider("HitSoundVolume", {
+        Text = "Hit Volume", Min = 0, Max = 2, Default = 0.8, Rounding = 2
+    })
+    feedback:AddSlider("HitSoundPitch", {
+        Text = "Hit Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddButton("Test Hit Sound", function() play("Hit", true) end)
+
+    feedback:AddToggle("KillSoundsEnabled", {Text = "Kill Sounds", Default = false})
+    feedback:AddDropdown("KillSoundPreset", {
+        Text = "Kill Sound", Values = {"Switch", "Ping", "Button", "Custom", "Folder"},
+        Default = "Switch", AllowNull = false
+    })
+    feedback:AddDropdown("KillSoundFile", {
+        Text = "KillSounds Folder File", Values = listKillSoundFiles(),
+        Default = noKillFiles, AllowNull = false
+    })
+    -- The file list can start with actual files, not only the no-files placeholder.
+    do
+        local files = listKillSoundFiles()
+        Options.KillSoundFile:SetValues(files)
+        if files[1] ~= noKillFiles then Options.KillSoundFile:SetValue(files[1]) end
+    end
+    feedback:AddInput("KillCustomSound", {
+        Text = "Custom Kill (ID / mp3 / wav / ogg / vsnd_c)",
+        Default = "", Placeholder = "123456789 or sounds/kill.vsnd_c"
+    })
+    feedback:AddSlider("KillSoundVolume", {
+        Text = "Kill Volume", Min = 0, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddSlider("KillSoundPitch", {
+        Text = "Kill Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddButton("Test Kill Sound", function() play("Kill", true) end)
+    feedback:AddButton("Rescan Custom Sound Files", function()
+        table.clear(assetCache) -- retry after exporting or adding a file
+        local previous = Options.KillSoundFile and Options.KillSoundFile.Value
+        local files = listKillSoundFiles()
+        Options.KillSoundFile:SetValues(files)
+        if not previous or not table.find(files, previous) then
+            Options.KillSoundFile:SetValue(files[1])
+        end
+    end)
+
+    local function getTargetPlayer(part)
+        if not part then return nil end
+        local character = part:FindFirstAncestorOfClass("Model")
+        local player = character and Players:GetPlayerFromCharacter(character)
+        if player and player ~= LocalPlayer then return player end
+        return nil
+    end
+
+    local function markShot()
+        if not ((Toggles.HitSoundsEnabled and Toggles.HitSoundsEnabled.Value)
+            or (Toggles.KillSoundsEnabled and Toggles.KillSoundsEnabled.Value)) then return end
+        local selected = nil
+        -- If Silent Aim is active, the intended target may be different from Mouse.Target.
+        if isAimActive() then
+            local ok, target = pcall(getClosestPlayer)
+            if ok then selected = getTargetPlayer(target) end
+        end
+        if not selected then
+            local ok, target = pcall(function() return Mouse.Target end)
+            if ok then selected = getTargetPlayer(target) end
+        end
+        if selected then markedShots[selected] = os.clock() end
+    end
+    headerTop.SoundShot = markShot
+
+    table.insert(connections, UserInputService.InputBegan:Connect(function(input, processed)
+        if processed or UserInputService:GetFocusedTextBox() then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then markShot() end
+    end))
+
+    local function unbind(player)
+        local rec = watched[player]
+        if rec then
+            for _, connection in ipairs(rec.connections) do connection:Disconnect() end
+            watched[player] = nil
+        end
+        markedShots[player] = nil
+    end
+
+    local function creatorMatches(humanoid)
+        local tag = humanoid:FindFirstChild("creator") or humanoid:FindFirstChild("Creator")
+        return tag and tag:IsA("ObjectValue") and tag.Value == LocalPlayer
+    end
+
+    local function bindCharacter(player, character)
+        if not ui.Parent then return end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+            or character:WaitForChild("Humanoid", 4)
+        if not humanoid or player.Character ~= character or not ui.Parent then return end
+        unbind(player)
+        local rec = {humanoid = humanoid, lastHealth = humanoid.Health,
+            creditedTime = -100, lastHitSound = -100,
+            killPlayed = false, connections = {}}
+        watched[player] = rec
+
+        local function credited()
+            return creatorMatches(humanoid)
+                or (markedShots[player] and os.clock() - markedShots[player] <= shotWindow)
+        end
+        local function onDeath()
+            if rec.killPlayed or watched[player] ~= rec then return end
+            if credited() or os.clock() - rec.creditedTime <= 2.5 then
+                rec.killPlayed = true
+                play("Kill", false)
+            end
+        end
+        table.insert(rec.connections, humanoid.HealthChanged:Connect(function(health)
+            if watched[player] ~= rec then return end
+            local old = rec.lastHealth
+            rec.lastHealth = health
+            if old <= health then return end
+            if credited() then
+                rec.creditedTime = os.clock()
+                if health <= 0 then
+                    onDeath()
+                elseif os.clock() - rec.lastHitSound >= 0.08 then
+                    rec.lastHitSound = os.clock()
+                    play("Hit", false)
+                end
+            end
+        end))
+        table.insert(rec.connections, humanoid.Died:Connect(onDeath))
+    end
+
+    local function watchPlayer(player)
+        if player == LocalPlayer then return end
+        local conns = {}
+        playerConnections[player] = conns
+        table.insert(conns, player.CharacterAdded:Connect(function(char)
+            task.spawn(bindCharacter, player, char)
+        end))
+        table.insert(conns, player.CharacterRemoving:Connect(function()
+            unbind(player)
+        end))
+        if player.Character then task.spawn(bindCharacter, player, player.Character) end
+    end
+    for _, player in ipairs(Players:GetPlayers()) do watchPlayer(player) end
+    table.insert(connections, Players.PlayerAdded:Connect(watchPlayer))
+    table.insert(connections, Players.PlayerRemoving:Connect(function(player)
+        unbind(player)
+        local conns = playerConnections[player]
+        if conns then
+            for _, connection in ipairs(conns) do connection:Disconnect() end
+            playerConnections[player] = nil
+        end
+    end))
+
+    ui.Destroying:Connect(function()
+        headerTop.SoundShot = nil
+        for _, connection in ipairs(connections) do connection:Disconnect() end
+        for player in pairs(watched) do unbind(player) end
+        for player, conns in pairs(playerConnections) do
+            for _, connection in ipairs(conns) do connection:Disconnect() end
+            playerConnections[player] = nil
+        end
+        for _, sound in pairs(soundObjects) do sound:Destroy() end
+    end)
+end)()
 
 -- Hitbox Expander adapted from the supplied Specter script.
 -- Kept inside a function scope to avoid Luau's top-level register limit.
@@ -3281,6 +4269,7 @@ local LoadConfigurationBOX = ConfigTab:AddRightTabbox("Load Configuration") do
             if type(isfile) == "function" and not isfile(ConfigPath(selected, "json")) then
                 Toggles.TeamCheck:SetValue(SilentAimSettings.TeamCheck)
                 Toggles.VisibleCheck:SetValue(SilentAimSettings.VisibleCheck)
+                Toggles.MagicBullet:SetValue(SilentAimSettings.MagicBullet == true)
                 Options.TargetPart:SetValue(SilentAimSettings.TargetPart)
                 Options.Method:SetValue(SilentAimSettings.SilentAimMethod)
                 Toggles.Visible:SetValue(SilentAimSettings.FOVVisible)
@@ -3345,6 +4334,12 @@ do
 
                     Arguments[2] = Ray.new(Origin, Direction)
 
+                    if SilentAimSettings.MagicBullet then
+                        -- Whitelist bypasses intervening world parts client-side.
+                        return workspace:FindPartOnRayWithWhitelist(
+                            Arguments[2], {HitPart.Parent}, true
+                        )
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
@@ -3366,7 +4361,9 @@ do
                     local Direction = getDirection(Origin, HitPart.Position)
 
                     Arguments[2] = Ray.new(Origin, Direction)
-
+                    if SilentAimSettings.MagicBullet then
+                        Arguments[3] = {HitPart.Parent}
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
@@ -3388,7 +4385,11 @@ do
                     local Direction = getDirection(Origin, HitPart.Position)
 
                     Arguments[2] = Ray.new(Origin, Direction)
-
+                    if SilentAimSettings.MagicBullet then
+                        return workspace:FindPartOnRayWithWhitelist(
+                            Arguments[2], {HitPart.Parent}, true
+                        )
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
@@ -3406,7 +4407,18 @@ do
                 if HitPart then
 
                     Arguments[3] = getDirection(A_Origin, HitPart.Position)
-
+                    if SilentAimSettings.MagicBullet then
+                        local previousParams = Arguments[4]
+                        local magicParams = RaycastParams.new()
+                        magicParams.FilterType = Enum.RaycastFilterType.Include
+                        magicParams.FilterDescendantsInstances = {HitPart.Parent}
+                        magicParams.IgnoreWater = true
+                        if typeof(previousParams) == "RaycastParams" then
+                            magicParams.CollisionGroup = previousParams.CollisionGroup
+                            magicParams.RespectCanCollide = previousParams.RespectCanCollide
+                        end
+                        Arguments[4] = magicParams
+                    end
                     return oldNamecall(unpack(Arguments))
 
                 end
