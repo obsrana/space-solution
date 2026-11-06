@@ -230,14 +230,12 @@ local ExpectedArguments = {
 
 }
 
+local AimChanceRandom = Random.new()
 function CalculateChance(Percentage)
-
-    Percentage = math.floor(Percentage)
-
-    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
-
-    return chance <= Percentage / 100
-
+    local percentage = math.clamp(tonumber(Percentage) or 0, 0, 100)
+    if percentage >= 100 then return true end
+    if percentage <= 0 then return false end
+    return AimChanceRandom:NextNumber(0, 100) < percentage
 end
 
 -- file handling
@@ -476,6 +474,17 @@ end
 -- SpaceSolution: custom interface matching dark screenshot.
 -- The original Silent Aim / ESP / config logic is kept below this adapter.
 local ACCENT = Color3.fromRGB(140, 151, 201)
+-- Dynamic theme / rainbow state (kept separate from gameplay logic).
+local ThemeState = {GUIColor = ACCENT, GUIRainbow = false, WatermarkRainbow = false,
+    WatermarkColor = ACCENT, ESPRainbow = false, RainbowSpeed = 0.12}
+local function rainbowColor(now)
+    return Color3.fromHSV((now * ThemeState.RainbowSpeed) % 1, 1, 1)
+end
+local function espColor(optionName)
+    if ThemeState.ESPRainbow then return rainbowColor(os.clock()) end
+    local option = Options[optionName]
+    return option and option.Value or Color3.new(1, 1, 1)
+end
 local BG = Color3.fromRGB(17, 16, 22)
 local BAR = Color3.fromRGB(20, 19, 25)
 local PANEL = Color3.fromRGB(22, 21, 28)
@@ -512,6 +521,7 @@ local function uiButton(parent, text, color)
         Color = ACCENT, Thickness = 1, Transparency = 1,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, b)
+    edge:SetAttribute("SpaceAccent", true)
     b.MouseEnter:Connect(function()
         game:GetService("TweenService"):Create(edge,
             TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
@@ -601,7 +611,8 @@ local function animateMenu(shouldOpen, instant)
     end
 end
 uiRound(frame, 13)
-uiCreate("UIStroke", {Color = Color3.fromRGB(43, 41, 53), Thickness = 1}, frame)
+local guiOutline = uiCreate("UIStroke", {Color = ACCENT, Thickness = 1}, frame)
+guiOutline:SetAttribute("SpaceAccent", true)
 local uiScale = uiCreate("UIScale", {Scale = 1}, frame)
 local function resizeMenu()
     local currentCamera = workspace.CurrentCamera
@@ -1462,10 +1473,14 @@ end
     -- Same WalkSpeed multiplier and movement boost as the source script.
     local speedConnection = SpaceRuntime:Connect(RunService.Stepped, function()
         if state.Unloaded then return end
+        if not state.Speed then
+            if state.SpeedHumanoid then disableSpeed() end
+            return
+        end
         local character = LocalPlayer.Character
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not state.Speed or not humanoid or humanoid.Health <= 0 then
+        if not humanoid or humanoid.Health <= 0 then
             if state.SpeedHumanoid then disableSpeed() end
             return
         end
@@ -1474,7 +1489,10 @@ end
             state.SpeedHumanoid = humanoid
             state.NormalWalkSpeed = humanoid.WalkSpeed
         end
-        humanoid.WalkSpeed = (state.NormalWalkSpeed or 16) * state.SpeedMultiplier
+        local desiredSpeed = (state.NormalWalkSpeed or 16) * state.SpeedMultiplier
+        if humanoid.WalkSpeed ~= desiredSpeed then
+            humanoid.WalkSpeed = desiredSpeed
+        end
         if root and humanoid.MoveDirection.Magnitude > 0 then
             local boost = (state.SpeedMultiplier - 1) * 0.28
             if boost > 0 then
@@ -1485,11 +1503,14 @@ end
 
     -- Restore each body's original CanCollide value after Noclip is disabled.
     local noclipParts, noclipCharacter, noclipRefresh = {}, nil, 0
+    local noclipNextUpdate = 0
     local noclipConnection = SpaceRuntime:Connect(RunService.Stepped, function()
         if state.Unloaded or not state.Noclip then return end
+        local now = os.clock()
+        if now < noclipNextUpdate then return end
+        noclipNextUpdate = now + (1 / 30)
         local character = LocalPlayer.Character
         if not character then return end
-        local now = os.clock()
         if character ~= noclipCharacter or now >= noclipRefresh then
             noclipCharacter = character
             noclipRefresh = now + 1
@@ -1530,6 +1551,9 @@ local menuKey = Enum.KeyCode.Delete
 local panicKey = nil
 local globalsContent = makePanel("Globals", pages["Ustawienia"].columns[1])
 local globalsControls = buildControls(globalsContent)
+-- Appearance controls are stored as normal options for the existing config manager.
+-- One switch controls both GUI and watermark rainbow colors.
+globalsControls:AddToggle("GejMode", {Text = "Gej Mode", Default = false})
 globalsControls:AddToggle("WaterMark", {Text = "WaterMark", Default = false})
 -- Separate ScreenGui keeps the watermark visible while the menu is hidden.
 local oldWatermarkGui = guiParent:FindFirstChild("SpaceSolutionWatermark")
@@ -1648,7 +1672,7 @@ globalsControls:AddButton("Hide Menu", function()
     closePopup()
     animateMenu(false) -- Press the configured Menu Key to reopen.
 end)
-globalsControls:AddButton("Unload Menu", function()
+globalsControls:AddButton("Unload Script (ALL OFF)", function()
     SpaceRuntime:Unload()
 end)
 local unifiedConfigContent = nil
@@ -1759,6 +1783,8 @@ local ESPControls = ESPBox:AddTab("Visuals")
 ESPControls:AddToggle("SkeletonEnabled", {Text = "Skeleton ESP", Default = false}):AddColorPicker("SkeletonColor", {Default = Color3.fromRGB(255,255,255), Title = "Skeleton Color"})
 
 ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 2.5, Min = 0.5, Max = 10, Rounding = 1})
+
+ESPControls:AddToggle("ESPRainbow", {Text = "Rainbow ESP (All Colors)", Default = false})
 
 ESPControls:AddSlider("ESPUpdateRate", {Text = "ESP Update Rate (Hz)", Default = 60, Min = 15, Max = 180, Rounding = 0})
 
@@ -2287,6 +2313,46 @@ SpaceRuntime:Connect(RunService.Heartbeat, function(dt)
     refreshESPPreview()
 end)
 
+-- Theme animation is throttled to 20 Hz and does not change ESP update rates.
+do
+    local themeElapsed = 0
+    local themeLastColor = nil
+    local accentStrokes, scrollFrames = {}, {}
+    for _, item in ipairs(ui:GetDescendants()) do
+        if item:IsA("UIStroke") and item:GetAttribute("SpaceAccent") then
+            accentStrokes[#accentStrokes + 1] = item
+        elseif item:IsA("ScrollingFrame") then
+            scrollFrames[#scrollFrames + 1] = item
+        end
+    end
+    SpaceRuntime:Connect(RunService.Heartbeat, function(dt)
+        if not SpaceRuntime.Active then return end
+        themeElapsed = themeElapsed + dt
+        if themeElapsed < 0.05 then return end
+        themeElapsed = 0
+        ThemeState.RainbowSpeed = 0.12
+        ThemeState.ESPRainbow = Toggles.ESPRainbow.Value
+        local gejMode = Toggles.GejMode.Value == true
+        ThemeState.GUIRainbow = gejMode
+        ThemeState.WatermarkRainbow = gejMode
+        local sharedColor = gejMode and rainbowColor(os.clock()) or ACCENT
+        local guiColor = sharedColor
+        local markColor = sharedColor
+        if watermarkLine.BackgroundColor3 ~= markColor then watermarkLine.BackgroundColor3 = markColor end
+        if watermark.TextColor3 ~= markColor then watermark.TextColor3 = markColor end
+        if guiColor ~= themeLastColor then
+            themeLastColor = guiColor
+            -- Accent strokes and scroll bars, including controls added later.
+            for _, item in ipairs(accentStrokes) do
+                if item.Parent then item.Color = guiColor end
+            end
+            for _, item in ipairs(scrollFrames) do
+                if item.Parent then item.ScrollBarImageColor3 = guiColor end
+            end
+        end
+    end)
+end
+
 -- Skeleton ESP based on the supplied source: cached BasePart-to-BasePart connections.
 -- R6 and R15 parts are resolved once per character, not searched every frame.
 local function buildSkeletonConnections(character)
@@ -2523,7 +2589,7 @@ local function updateESP(player, obj)
         local distance = (root.Position - myRoot.Position).Magnitude
         local transparency = math.clamp(1 - distance / 500, 0.3, 1)
         local thickness = Options.SkeletonThickness.Value
-        local color = Options.SkeletonColor.Value
+        local color = espColor("SkeletonColor")
 
         for i, line in ipairs(obj.Bones) do
             local connection = obj.SkeletonConnections[i]
@@ -2564,7 +2630,7 @@ local function updateESP(player, obj)
 
                 obj.HeadDot.Position = Vector2.new(point.X, point.Y)
 
-                obj.HeadDot.Color = Options.HeadDotColor.Value
+                obj.HeadDot.Color = espColor("HeadDotColor")
 
                 obj.HeadDot.Radius = getHeadDotRadiusPixels()
 
@@ -2629,7 +2695,7 @@ local function updateESP(player, obj)
 
             local width, height = maxX - minX, maxY - minY
 
-            local color = Options.BoxESPColor.Value
+            local color = espColor("BoxESPColor")
 
             local thickness = Options.BoxThickness.Value
 
@@ -2703,7 +2769,7 @@ local function updateESP(player, obj)
 
         obj.Tracer.To = Vector2.new(pos.X, pos.Y)
 
-        obj.Tracer.Color = Options.TracerESPColor.Value
+        obj.Tracer.Color = espColor("TracerESPColor")
 
         obj.Tracer.Thickness = Options.TracerThickness.Value
 
@@ -2751,7 +2817,7 @@ local function updateESP(player, obj)
                     and (nameLabelSize + distanceLabelSize + 12)
                     or (nameLabelSize + 8))
             )
-            obj.Name.Color = Options.NameESPColor.Value
+            obj.Name.Color = espColor("NameESPColor")
             obj.Name.Visible = true
         end
 
@@ -2759,7 +2825,7 @@ local function updateESP(player, obj)
             -- Shared calibrated scale with ESP Preview (one decimal like kill feed).
             obj.Distance.Text = string.format("%.1fm",
                 obj._espDistance * 0.28 * 1.614)
-            obj.Distance.Color = Options.DistanceESPColor.Value
+            obj.Distance.Color = espColor("DistanceESPColor")
             if placement == "Bottom" then
                 obj.Distance.Position = Vector2.new(centreX, maxY + 7)
             elseif placement == "Left" then
@@ -2835,9 +2901,9 @@ local function updateESP(player, obj)
 
         local chamsColor = isCharacterVisible()
 
-            and Options.ChamsVisibleColor.Value
+            and espColor("ChamsVisibleColor")
 
-            or Options.ChamsInvisibleColor.Value
+            or espColor("ChamsInvisibleColor")
 
         obj.Highlight.FillColor = chamsColor
 
@@ -3263,217 +3329,258 @@ end
 end)() -- Silent Aim controls in their own function scope
 
 ;(function()
--- Trigger Bot with independent keybind and Toggle / Hold / Always modes.
-local TriggerBotSettings = {
-    Enabled = false,
-    TeamCheck = false,
-    VisibleCheck = false,
-    Delay = 0.12,
-    ToggleKey = "T",
-    TargetHead = false,
-    TargetBody = false,
+-- Trigger Bot: controls based on the supplied two-column reference.
+local TS = {
+    Enabled = false, Basic = false, Players = true, NPCs = false,
+    AutoShoot = true, AutoReload = false, Burst = false,
+    Head = true, Chest = true, DrawFOV = false,
+    FOV = 20, MaxDistance = 200, Delay = 0,
+    Key = "T", KeyHeld = false, KeyToggled = false,
 }
-local triggerLastShot = 0
-local triggerKeyHeld = false
-local triggerToggled = false
-local triggerSyncing = false
+local lastShot, lastCheck, lastReload = 0, 0, 0
+local syncing = false
+local NPCcache, lastNPCscan = {}, 0
+local triggerCircle = Drawing.new("Circle")
+triggerCircle.Visible = false
+triggerCircle.Filled = false
+triggerCircle.Thickness = 1.5
+triggerCircle.NumSides = 64
+triggerCircle.Color = Color3.fromRGB(255, 220, 55)
+SpaceRuntime:AddCleanup(function()
+    pcall(function() triggerCircle:Remove() end)
+end)
 
-local function triggerMode()
+local function mode()
     return Options.TriggerMode and Options.TriggerMode.Value or "Toggle"
 end
-
-local function matchesTriggerKey(input)
-    local selected = Options.TriggerKeyPicker and Options.TriggerKeyPicker.Value or TriggerBotSettings.ToggleKey
-    if typeof(selected) == "EnumItem" then
-        return input.KeyCode == selected or input.UserInputType == selected
+local function keyMatches(input)
+    local key = Options.TriggerKeyPicker and Options.TriggerKeyPicker.Value or TS.Key
+    if typeof(key) == "EnumItem" then
+        return input.KeyCode == key or input.UserInputType == key
     end
-    selected = tostring(selected)
-    if selected == "MB1" then return input.UserInputType == Enum.UserInputType.MouseButton1 end
-    if selected == "MB2" then return input.UserInputType == Enum.UserInputType.MouseButton2 end
-    return input.KeyCode.Name == selected or input.UserInputType.Name == selected
+    key = tostring(key)
+    if key == "MB1" then return input.UserInputType == Enum.UserInputType.MouseButton1 end
+    if key == "MB2" then return input.UserInputType == Enum.UserInputType.MouseButton2 end
+    return input.KeyCode.Name == key or input.UserInputType.Name == key
+end
+local function sync()
+    local active = mode() == "Always"
+        or (mode() == "Hold" and TS.KeyHeld)
+        or (mode() == "Toggle" and TS.KeyToggled)
+    TS.Enabled = active
+    if Toggles.TriggerEnabled and Toggles.TriggerEnabled.Value ~= active then
+        syncing = true
+        Toggles.TriggerEnabled:SetValue(active)
+        syncing = false
+    end
 end
 
-local function syncTriggerEnabled()
-    local mode = triggerMode()
-    local enabled = (mode == "Always") or (mode == "Hold" and triggerKeyHeld)
-        or (mode == "Toggle" and triggerToggled)
-    TriggerBotSettings.Enabled = enabled
-    if Toggles.TriggerEnabled and Toggles.TriggerEnabled.Value ~= enabled then
-        triggerSyncing = true
-        Toggles.TriggerEnabled:SetValue(enabled)
-        triggerSyncing = false
+local function validCharacter(model)
+    local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.Health > 0
+end
+
+local function refreshNPCs(now)
+    if now - lastNPCscan < 1 then return end
+    lastNPCscan = now
+    table.clear(NPCcache)
+    if not TS.NPCs then return end
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if inst:IsA("Humanoid") then
+            local model = inst.Parent
+            if model and model:IsA("Model") and not Players:GetPlayerFromCharacter(model)
+                and inst.Health > 0 then
+                NPCcache[#NPCcache + 1] = model
+            end
+        end
     end
 end
 
--- A filtered camera ray finds players under the crosshair even when a wall
--- is in front of them. Visible Check independently decides whether walls block.
-local triggerTargetRayParams = RaycastParams.new()
-triggerTargetRayParams.FilterType = Enum.RaycastFilterType.Include
-triggerTargetRayParams.IgnoreWater = true
-
-local triggerVisibilityRayParams = RaycastParams.new()
-triggerVisibilityRayParams.FilterType = Enum.RaycastFilterType.Exclude
-triggerVisibilityRayParams.IgnoreWater = true
-
-local function triggerTargetValid()
-    if not TriggerBotSettings.TargetHead and not TriggerBotSettings.TargetBody then
-        return false
-    end
-
-    local currentCamera = workspace.CurrentCamera
-    if not currentCamera then return false end
-
-    local targetParts = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer
-            and (not TriggerBotSettings.TeamCheck or player.Team == nil
-                or player.Team ~= LocalPlayer.Team) then
-            local character = player.Character
-            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                for _, part in ipairs(character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        if (part.Name == "Head" and TriggerBotSettings.TargetHead)
-                            or (part.Name ~= "Head" and TriggerBotSettings.TargetBody) then
-                            table.insert(targetParts, part)
+local function chooseTarget(now)
+    local camera = workspace.CurrentCamera
+    if not camera then return nil end
+    refreshNPCs(now)
+    local mousePos = UserInputService:GetMouseLocation()
+    local best, bestDistance = nil, TS.FOV
+    local function inspect(character)
+        if not validCharacter(character) then return end
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        if (root.Position - camera.CFrame.Position).Magnitude > TS.MaxDistance then return end
+        local parts = {}
+        if TS.Head then
+            parts[#parts + 1] = character:FindFirstChild("Head")
+        end
+        if TS.Chest then
+            parts[#parts + 1] = character:FindFirstChild("UpperTorso")
+                or character:FindFirstChild("Torso")
+        end
+        for _, part in ipairs(parts) do
+            if part and part:IsA("BasePart") then
+                local screen, onScreen = camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local distance = (mousePos - Vector2.new(screen.X, screen.Y)).Magnitude
+                    if distance <= bestDistance then
+                        -- Basic Trigger requires the crosshair to be on the target part.
+                        if not TS.Basic or distance <= 6 then
+                            local ignore = {LocalPlayer.Character}
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                            rayParams.FilterDescendantsInstances = ignore
+                            rayParams.IgnoreWater = true
+                            local direction = part.Position - camera.CFrame.Position
+                            local hit = workspace:Raycast(camera.CFrame.Position, direction, rayParams)
+                            if hit and hit.Instance:IsDescendantOf(character) then
+                                best, bestDistance = part, distance
+                            end
                         end
                     end
                 end
             end
         end
     end
-
-    if #targetParts == 0 then return false end
-
-    -- ScreenPointToRay uses the same inset-adjusted mouse coordinates as Mouse.X/Y.
-    local aimRay = currentCamera:ScreenPointToRay(Mouse.X, Mouse.Y)
-    triggerTargetRayParams.FilterDescendantsInstances = targetParts
-    local hit = workspace:Raycast(aimRay.Origin, aimRay.Direction * 10000, triggerTargetRayParams)
-    if not hit then return false end
-
-    if TriggerBotSettings.VisibleCheck then
-        local targetCharacter = hit.Instance:FindFirstAncestorOfClass("Model")
-        local ignored = {}
-        if LocalPlayer.Character then
-            table.insert(ignored, LocalPlayer.Character)
+    if TS.Players then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and (not player.Team or player.Team ~= LocalPlayer.Team) then
+                inspect(player.Character)
+            end
         end
-        if targetCharacter then
-            table.insert(ignored, targetCharacter)
-        end
-        triggerVisibilityRayParams.FilterDescendantsInstances = ignored
-        -- Any object between the camera and target prevents the shot.
-        local obstacle = workspace:Raycast(
-            aimRay.Origin,
-            hit.Position - aimRay.Origin,
-            triggerVisibilityRayParams
-        )
-        if obstacle then return false end
     end
+    if TS.NPCs then
+        for _, character in ipairs(NPCcache) do inspect(character) end
+    end
+    return best
+end
 
+local function fire()
+    if type(mouse1click) == "function" then
+        mouse1click()
+    elseif type(mouse1press) == "function" and type(mouse1release) == "function" then
+        mouse1press()
+        task.defer(mouse1release)
+    else
+        return false
+    end
+    if headerTop.SoundShot then headerTop.SoundShot() end
     return true
 end
 
-local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
-    local Trigger = TriggerBOX:AddTab("Trigger Bot")
-    Trigger:AddToggle("TriggerEnabled", {
-        Text = "Trigger Bot Enabled", Default = false
-    }):OnChanged(function()
-        if triggerSyncing then return end
-        local enabled = Toggles.TriggerEnabled.Value
-        if triggerMode() == "Toggle" then
-            triggerToggled = enabled
-        elseif triggerMode() == "Hold" then
-            triggerKeyHeld = enabled
-        end
-        syncTriggerEnabled()
+local TriggerBOX = GeneralTab:AddRightTabbox("Trigger") do
+    local Trigger = TriggerBOX:AddTab("Trigger")
+    Trigger:AddToggle("TriggerEnabled", {Text="Trigger", Default=false}):OnChanged(function()
+        if syncing then return end
+        if mode() == "Toggle" then TS.KeyToggled = Toggles.TriggerEnabled.Value
+        elseif mode() == "Hold" then TS.KeyHeld = Toggles.TriggerEnabled.Value end
+        sync()
     end)
-    Trigger:AddDropdown("TriggerMode", {
-        Text = "Trigger Mode", Values = {"Toggle", "Hold", "Always"},
-        Default = "Toggle", AllowNull = false
-    }):OnChanged(function()
-        triggerKeyHeld = false
-        syncTriggerEnabled()
+    Trigger:AddToggle("TriggerBasic", {Text="Basic Trigger", Default=false}):OnChanged(function()
+        TS.Basic = Toggles.TriggerBasic.Value
+    end)
+    Trigger:AddToggle("TriggerNPCs", {Text="Target NPCs", Default=false}):OnChanged(function()
+        TS.NPCs = Toggles.TriggerNPCs.Value
+        lastNPCscan = 0
+    end)
+    Trigger:AddToggle("TriggerAutoShoot", {Text="Auto Shoot", Default=true}):OnChanged(function()
+        TS.AutoShoot = Toggles.TriggerAutoShoot.Value
+    end)
+    Trigger:AddToggle("TriggerAutoReload", {Text="Auto Reload", Default=false}):OnChanged(function()
+        TS.AutoReload = Toggles.TriggerAutoReload.Value
+    end)
+    Trigger:AddToggle("TriggerBurst", {Text="Burst Mode", Default=false}):OnChanged(function()
+        TS.Burst = Toggles.TriggerBurst.Value
+    end)
+    Trigger:AddToggle("TriggerHead", {Text="Trigger On Head", Default=true}):OnChanged(function()
+        TS.Head = Toggles.TriggerHead.Value
+    end)
+    Trigger:AddToggle("TriggerChest", {Text="Trigger On Chest", Default=true}):OnChanged(function()
+        TS.Chest = Toggles.TriggerChest.Value
+    end)
+    Trigger:AddToggle("TriggerDrawFOV", {Text="Draw FOV", Default=false}):OnChanged(function()
+        TS.DrawFOV = Toggles.TriggerDrawFOV.Value
     end)
     Trigger:AddKeyPicker("TriggerKeyPicker", {
-        Text = "Trigger Key", Default = TriggerBotSettings.ToggleKey,
-        Mode = "Toggle", NoUI = false, SyncToggleState = false
+        Text="Bind", Default="T", Mode="Toggle", NoUI=false, SyncToggleState=false
     }):OnChanged(function()
         local selected = Options.TriggerKeyPicker.Value
-        TriggerBotSettings.ToggleKey = typeof(selected) == "EnumItem" and selected.Name or tostring(selected)
-        triggerKeyHeld = false
-        syncTriggerEnabled()
+        TS.Key = typeof(selected) == "EnumItem" and selected.Name or tostring(selected)
+        TS.KeyHeld = false
+        sync()
     end)
-    Trigger:AddToggle("TriggerTeamCheck", {
-        Text = "Trigger Team Check", Default = false
+    Trigger:AddDropdown("TriggerMode", {
+        Text="Bind Mode", Values={"Toggle","Hold","Always"}, Default="Toggle", AllowNull=false
     }):OnChanged(function()
-        TriggerBotSettings.TeamCheck = Toggles.TriggerTeamCheck.Value
+        TS.KeyHeld = false
+        sync()
     end)
-    Trigger:AddToggle("TriggerVisibleCheck", {
-        Text = "Visible Check", Default = false
+    Trigger:AddSlider("TriggerFOV", {
+        Text="FOV", Min=1, Max=300, Default=20, Rounding=0
     }):OnChanged(function()
-        TriggerBotSettings.VisibleCheck = Toggles.TriggerVisibleCheck.Value
+        TS.FOV = Options.TriggerFOV.Value
     end)
-    Trigger:AddToggle("TriggerTargetHead", {
-        Text = "Target Head", Default = false
+    Trigger:AddSlider("TriggerMaxDistance", {
+        Text="Max Distance", Min=10, Max=1000, Default=200, Rounding=0
     }):OnChanged(function()
-        TriggerBotSettings.TargetHead = Toggles.TriggerTargetHead.Value
-    end)
-    Trigger:AddToggle("TriggerTargetBody", {
-        Text = "Target Body", Default = false
-    }):OnChanged(function()
-        TriggerBotSettings.TargetBody = Toggles.TriggerTargetBody.Value
+        TS.MaxDistance = Options.TriggerMaxDistance.Value
     end)
     Trigger:AddSlider("TriggerDelay", {
-        Text = "Trigger Delay (seconds)", Min = 0.05, Max = 1,
-        Default = 0.12, Rounding = 2
+        Text="Delay", Min=0, Max=1, Default=0, Rounding=2
     }):OnChanged(function()
-        TriggerBotSettings.Delay = Options.TriggerDelay.Value
+        TS.Delay = Options.TriggerDelay.Value
     end)
-    syncTriggerEnabled()
+    Trigger:AddToggle("TriggerPlayers", {Text="Target Player", Default=true}):OnChanged(function()
+        TS.Players = Toggles.TriggerPlayers.Value
+    end)
+    Trigger:AddToggle("TriggerTargetNPC", {Text="Target NPC", Default=false}):OnChanged(function()
+        TS.NPCs = Toggles.TriggerTargetNPC.Value
+        if Toggles.TriggerNPCs and Toggles.TriggerNPCs.Value ~= TS.NPCs then
+            Toggles.TriggerNPCs:SetValue(TS.NPCs)
+        end
+    end)
+    sync()
 end
 
 SpaceRuntime:Connect(UserInputService.InputBegan, function(input, processed)
-    if processed or UserInputService:GetFocusedTextBox() then return end
-    if not matchesTriggerKey(input) then return end
-    if triggerMode() == "Toggle" then
-        triggerToggled = not triggerToggled
-    elseif triggerMode() == "Hold" then
-        triggerKeyHeld = true
-    end
-    syncTriggerEnabled()
+    if processed or UserInputService:GetFocusedTextBox() or not keyMatches(input) then return end
+    if mode() == "Toggle" then TS.KeyToggled = not TS.KeyToggled
+    elseif mode() == "Hold" then TS.KeyHeld = true end
+    sync()
 end)
 SpaceRuntime:Connect(UserInputService.InputEnded, function(input)
-    if triggerMode() == "Hold" and matchesTriggerKey(input) then
-        triggerKeyHeld = false
-        syncTriggerEnabled()
+    if mode() == "Hold" and keyMatches(input) then
+        TS.KeyHeld = false
+        sync()
     end
 end)
 
-do
-local lastTriggerCheck = 0
 SpaceRuntime:Connect(RunService.RenderStepped, function()
-    if not TriggerBotSettings.Enabled then return end
+    local show = SpaceRuntime.Active and TS.Enabled and TS.DrawFOV
+    triggerCircle.Visible = show
+    if show then
+        triggerCircle.Radius = TS.FOV
+        triggerCircle.Position = UserInputService:GetMouseLocation()
+    end
+    if not SpaceRuntime.Active or not TS.Enabled or not TS.AutoShoot then return end
     local now = os.clock()
-    if now - lastTriggerCheck < 1 / 30 then return end
-    lastTriggerCheck = now
-    if now - triggerLastShot < TriggerBotSettings.Delay then return end
-    if not triggerTargetValid() then return end
-    if type(mouse1click) == "function" then
-        triggerLastShot = now
-        if headerTop.SoundShot then headerTop.SoundShot() end
-        mouse1click()
-    elseif type(mouse1press) == "function" and type(mouse1release) == "function" then
-        triggerLastShot = now
-        if headerTop.SoundShot then headerTop.SoundShot() end
-        mouse1press()
-        task.defer(mouse1release)
+    if now - lastCheck < (1 / 30) then return end
+    lastCheck = now
+    if now - lastShot < math.max(0.07, TS.Delay) then return end
+    if not chooseTarget(now) then return end
+    if fire() then
+        lastShot = now
+        if TS.Burst then
+            task.delay(0.075, function()
+                if SpaceRuntime.Active and TS.Enabled and TS.AutoShoot then fire() end
+            end)
+            task.delay(0.15, function()
+                if SpaceRuntime.Active and TS.Enabled and TS.AutoShoot then fire() end
+            end)
+        end
     end
 end)
-end
-
+-- Auto Reload is game-dependent: without a reliable ammo signal, don't spam R.
 end)() -- Trigger Bot isolated to keep main-chunk register usage low
 
--- SpaceSolution client-side Hit/Kill Sounds.
+-- SpaceSolution client-side Hit / Long Kill Sounds.
 -- The game-specific weapon's server acknowledgement is unavailable in a universal script.
 -- Attribute feedback to recent local shots and/or a Humanoid's "creator" tag.
 ;(function()
@@ -3484,8 +3591,9 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     local connections = {}
     local markedShots = {}
     local assetCache = {} -- Resolve custom audio files once, not on every hit.
-    local shotWindow = 1.25
-    local longKillThreshold = 130 -- meters as shown by calibrated Distance ESP
+    local shotWindow = 5.0 -- allow delayed long-range kills to be correlated
+    local longKillThreshold = 110 -- meters as shown by calibrated Distance ESP
+    local hitSoundMaxDistance = 99 -- Hit Sound only up to and including 99m
     local distanceScale = 0.28 * 1.614 -- must match Distance ESP / ESP Preview
 
     -- Store shot distance, rather than relying on the victim's position after death.
@@ -3581,7 +3689,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     end
 
     local function soundId(kind)
-        -- All three sounds come exclusively from spacesolution/KillSounds/.
+        -- Hit and Long Kill sounds come exclusively from spacesolution/KillSounds/.
         local picker = Options[kind .. "SoundFile"]
         local filename = picker and picker.Value
         if type(filename) ~= "string" or filename == noKillFiles
@@ -3709,12 +3817,12 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     end
 
     -- Folder only: no Custom Sound IDs, presets or manual paths.
-    -- One shared directory for Hit, Kill and Long Kill sounds.
-    local feedback = buildControls(makePanel("Hit & Kill Sounds", pages.Misc.columns[2]))
+    -- One shared directory for Hit (<=99m) and Long Kill (>=110m).
+    local feedback = buildControls(makePanel("Hit & Long Kill Sounds", pages.Misc.columns[2]))
     local initialFiles = listKillSoundFiles()
     local firstFile = initialFiles[1]
 
-    feedback:AddToggle("HitSoundsEnabled", {Text = "Hit Sounds", Default = false})
+    feedback:AddToggle("HitSoundsEnabled", {Text = "Hit Sounds (do 99m)", Default = false})
     feedback:AddDropdown("HitSoundFile", {
         Text = "Hit Sound File", Values = initialFiles,
         Default = firstFile, AllowNull = false
@@ -3727,20 +3835,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     })
     feedback:AddButton("Test Hit Sound", function() play("Hit", true) end)
 
-    feedback:AddToggle("KillSoundsEnabled", {Text = "Kill Sounds", Default = false})
-    feedback:AddDropdown("KillSoundFile", {
-        Text = "Kill Sound File", Values = initialFiles,
-        Default = firstFile, AllowNull = false
-    })
-    feedback:AddSlider("KillSoundVolume", {
-        Text = "Kill Volume", Min = 0, Max = 2, Default = 1, Rounding = 2
-    })
-    feedback:AddSlider("KillSoundPitch", {
-        Text = "Kill Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
-    })
-    feedback:AddButton("Test Kill Sound", function() play("Kill", true) end)
-
-    feedback:AddToggle("LongKillSoundsEnabled", {Text = "Long Kill Sounds (130m+)", Default = false})
+    feedback:AddToggle("LongKillSoundsEnabled", {Text = "Long Kill Sounds (110m+)", Default = false})
     feedback:AddDropdown("LongKillSoundFile", {
         Text = "Long Kill Sound File", Values = initialFiles,
         Default = firstFile, AllowNull = false
@@ -3763,7 +3858,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     feedback:AddButton("Rescan Sound Files", function()
         table.clear(assetCache)
         local files = listKillSoundFiles()
-        for _, kind in ipairs({"Hit", "Kill", "LongKill"}) do
+        for _, kind in ipairs({"Hit", "LongKill"}) do
             local picker = Options[kind .. "SoundFile"]
             if picker then
                 local previous = picker.Value
@@ -3786,7 +3881,6 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     local function markShot()
         if not SpaceRuntime.Active then return end
         if not ((Toggles.HitSoundsEnabled and Toggles.HitSoundsEnabled.Value)
-            or (Toggles.KillSoundsEnabled and Toggles.KillSoundsEnabled.Value)
             or (Toggles.LongKillSoundsEnabled and Toggles.LongKillSoundsEnabled.Value)) then return end
         local selected = nil
         -- If Silent Aim is active, the intended target may be different from Mouse.Target.
@@ -3797,6 +3891,32 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
         if not selected then
             local ok, target = pcall(function() return Mouse.Target end)
             if ok then selected = getTargetPlayer(target) end
+        end
+        -- Long-range shots often have no Mouse.Target (the ray hits terrain or
+        -- misses the tiny character). Use a small crosshair cone as a fallback.
+        if not selected then
+            local camera = workspace.CurrentCamera
+            if camera then
+                local cursor = UserInputService:GetMouseLocation()
+                local bestPixels = 75
+                for _, candidate in ipairs(Players:GetPlayers()) do
+                    if candidate ~= LocalPlayer then
+                        local character = candidate.Character
+                        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                        local root = character and character:FindFirstChild("HumanoidRootPart")
+                        if humanoid and humanoid.Health > 0 and root then
+                            local point, onScreen = camera:WorldToViewportPoint(root.Position)
+                            if onScreen then
+                                local pixels = (Vector2.new(point.X, point.Y) - cursor).Magnitude
+                                if pixels < bestPixels then
+                                    bestPixels = pixels
+                                    selected = candidate
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
         if selected then
             markedShots[selected] = {at = os.clock(), distance = displayedDistance(selected)}
@@ -3850,10 +3970,12 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
                     or rec.creditedDistance or displayedDistance(player)
                 local longEnabled = Toggles.LongKillSoundsEnabled
                     and Toggles.LongKillSoundsEnabled.Value
-                if longEnabled and meters and meters >= longKillThreshold then
+                -- Kill Sounds controls were removed. Close-range kills use
+                -- the Hit Sound, if enabled; distant kills use Long Kill Sound.
+                if meters and longEnabled and meters >= longKillThreshold then
                     play("LongKill", false)
-                else
-                    play("Kill", false)
+                elseif meters and meters <= hitSoundMaxDistance then
+                    play("Hit", false)
                 end
             end
         end
@@ -3868,7 +3990,8 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
                 rec.creditedDistance = (shot and shot.distance) or displayedDistance(player)
                 if health <= 0 then
                     onDeath()
-                elseif os.clock() - rec.lastHitSound >= 0.08 then
+                elseif rec.creditedDistance and rec.creditedDistance <= hitSoundMaxDistance
+                    and os.clock() - rec.lastHitSound >= 0.08 then
                     rec.lastHitSound = os.clock()
                     play("Hit", false)
                 end
@@ -4312,10 +4435,18 @@ resume(create(function()
 
     SpaceRuntime:Connect(RenderStepped, function()
 
-        fov_circle.Visible = Toggles.Visible and Toggles.Visible.Value == true
-        if fov_circle.Visible then
-            fov_circle.Color = Options.Color.Value
-            fov_circle.Position = getMousePosition()
+        local shouldShow = Toggles.Visible and Toggles.Visible.Value == true
+        if fov_circle.Visible ~= shouldShow then
+            fov_circle.Visible = shouldShow
+        end
+        if not shouldShow then return end
+        local wantedColor = Options.Color.Value
+        if fov_circle.Color ~= wantedColor then
+            fov_circle.Color = wantedColor
+        end
+        local mousePosition = getMousePosition()
+        if fov_circle.Position ~= mousePosition then
+            fov_circle.Position = mousePosition
         end
 
     end)
