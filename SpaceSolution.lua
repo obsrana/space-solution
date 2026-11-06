@@ -230,14 +230,12 @@ local ExpectedArguments = {
 
 }
 
+local AimChanceRandom = Random.new()
 function CalculateChance(Percentage)
-
-    Percentage = math.floor(Percentage)
-
-    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
-
-    return chance <= Percentage / 100
-
+    local percentage = math.clamp(tonumber(Percentage) or 0, 0, 100)
+    if percentage >= 100 then return true end
+    if percentage <= 0 then return false end
+    return AimChanceRandom:NextNumber(0, 100) < percentage
 end
 
 -- file handling
@@ -476,6 +474,17 @@ end
 -- SpaceSolution: custom interface matching dark screenshot.
 -- The original Silent Aim / ESP / config logic is kept below this adapter.
 local ACCENT = Color3.fromRGB(140, 151, 201)
+-- Dynamic theme / rainbow state (kept separate from gameplay logic).
+local ThemeState = {GUIColor = ACCENT, GUIRainbow = false, WatermarkRainbow = false,
+    WatermarkColor = ACCENT, ESPRainbow = false, RainbowSpeed = 0.12}
+local function rainbowColor(now)
+    return Color3.fromHSV((now * ThemeState.RainbowSpeed) % 1, 1, 1)
+end
+local function espColor(optionName)
+    if ThemeState.ESPRainbow then return rainbowColor(os.clock()) end
+    local option = Options[optionName]
+    return option and option.Value or Color3.new(1, 1, 1)
+end
 local BG = Color3.fromRGB(17, 16, 22)
 local BAR = Color3.fromRGB(20, 19, 25)
 local PANEL = Color3.fromRGB(22, 21, 28)
@@ -512,6 +521,7 @@ local function uiButton(parent, text, color)
         Color = ACCENT, Thickness = 1, Transparency = 1,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, b)
+    edge:SetAttribute("SpaceAccent", true)
     b.MouseEnter:Connect(function()
         game:GetService("TweenService"):Create(edge,
             TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
@@ -601,7 +611,8 @@ local function animateMenu(shouldOpen, instant)
     end
 end
 uiRound(frame, 13)
-uiCreate("UIStroke", {Color = Color3.fromRGB(43, 41, 53), Thickness = 1}, frame)
+local guiOutline = uiCreate("UIStroke", {Color = ACCENT, Thickness = 1}, frame)
+guiOutline:SetAttribute("SpaceAccent", true)
 local uiScale = uiCreate("UIScale", {Scale = 1}, frame)
 local function resizeMenu()
     local currentCamera = workspace.CurrentCamera
@@ -1462,10 +1473,14 @@ end
     -- Same WalkSpeed multiplier and movement boost as the source script.
     local speedConnection = SpaceRuntime:Connect(RunService.Stepped, function()
         if state.Unloaded then return end
+        if not state.Speed then
+            if state.SpeedHumanoid then disableSpeed() end
+            return
+        end
         local character = LocalPlayer.Character
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not state.Speed or not humanoid or humanoid.Health <= 0 then
+        if not humanoid or humanoid.Health <= 0 then
             if state.SpeedHumanoid then disableSpeed() end
             return
         end
@@ -1474,7 +1489,10 @@ end
             state.SpeedHumanoid = humanoid
             state.NormalWalkSpeed = humanoid.WalkSpeed
         end
-        humanoid.WalkSpeed = (state.NormalWalkSpeed or 16) * state.SpeedMultiplier
+        local desiredSpeed = (state.NormalWalkSpeed or 16) * state.SpeedMultiplier
+        if humanoid.WalkSpeed ~= desiredSpeed then
+            humanoid.WalkSpeed = desiredSpeed
+        end
         if root and humanoid.MoveDirection.Magnitude > 0 then
             local boost = (state.SpeedMultiplier - 1) * 0.28
             if boost > 0 then
@@ -1485,11 +1503,14 @@ end
 
     -- Restore each body's original CanCollide value after Noclip is disabled.
     local noclipParts, noclipCharacter, noclipRefresh = {}, nil, 0
+    local noclipNextUpdate = 0
     local noclipConnection = SpaceRuntime:Connect(RunService.Stepped, function()
         if state.Unloaded or not state.Noclip then return end
+        local now = os.clock()
+        if now < noclipNextUpdate then return end
+        noclipNextUpdate = now + (1 / 30)
         local character = LocalPlayer.Character
         if not character then return end
-        local now = os.clock()
         if character ~= noclipCharacter or now >= noclipRefresh then
             noclipCharacter = character
             noclipRefresh = now + 1
@@ -1530,6 +1551,9 @@ local menuKey = Enum.KeyCode.Delete
 local panicKey = nil
 local globalsContent = makePanel("Globals", pages["Ustawienia"].columns[1])
 local globalsControls = buildControls(globalsContent)
+-- Appearance controls are stored as normal options for the existing config manager.
+-- One switch controls both GUI and watermark rainbow colors.
+globalsControls:AddToggle("GejMode", {Text = "Gej Mode", Default = false})
 globalsControls:AddToggle("WaterMark", {Text = "WaterMark", Default = false})
 -- Separate ScreenGui keeps the watermark visible while the menu is hidden.
 local oldWatermarkGui = guiParent:FindFirstChild("SpaceSolutionWatermark")
@@ -1759,6 +1783,8 @@ local ESPControls = ESPBox:AddTab("Visuals")
 ESPControls:AddToggle("SkeletonEnabled", {Text = "Skeleton ESP", Default = false}):AddColorPicker("SkeletonColor", {Default = Color3.fromRGB(255,255,255), Title = "Skeleton Color"})
 
 ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 2.5, Min = 0.5, Max = 10, Rounding = 1})
+
+ESPControls:AddToggle("ESPRainbow", {Text = "Rainbow ESP (All Colors)", Default = false})
 
 ESPControls:AddSlider("ESPUpdateRate", {Text = "ESP Update Rate (Hz)", Default = 60, Min = 15, Max = 180, Rounding = 0})
 
@@ -2287,6 +2313,46 @@ SpaceRuntime:Connect(RunService.Heartbeat, function(dt)
     refreshESPPreview()
 end)
 
+-- Theme animation is throttled to 20 Hz and does not change ESP update rates.
+do
+    local themeElapsed = 0
+    local themeLastColor = nil
+    local accentStrokes, scrollFrames = {}, {}
+    for _, item in ipairs(ui:GetDescendants()) do
+        if item:IsA("UIStroke") and item:GetAttribute("SpaceAccent") then
+            accentStrokes[#accentStrokes + 1] = item
+        elseif item:IsA("ScrollingFrame") then
+            scrollFrames[#scrollFrames + 1] = item
+        end
+    end
+    SpaceRuntime:Connect(RunService.Heartbeat, function(dt)
+        if not SpaceRuntime.Active then return end
+        themeElapsed = themeElapsed + dt
+        if themeElapsed < 0.05 then return end
+        themeElapsed = 0
+        ThemeState.RainbowSpeed = 0.12
+        ThemeState.ESPRainbow = Toggles.ESPRainbow.Value
+        local gejMode = Toggles.GejMode.Value == true
+        ThemeState.GUIRainbow = gejMode
+        ThemeState.WatermarkRainbow = gejMode
+        local sharedColor = gejMode and rainbowColor(os.clock()) or ACCENT
+        local guiColor = sharedColor
+        local markColor = sharedColor
+        if watermarkLine.BackgroundColor3 ~= markColor then watermarkLine.BackgroundColor3 = markColor end
+        if watermark.TextColor3 ~= markColor then watermark.TextColor3 = markColor end
+        if guiColor ~= themeLastColor then
+            themeLastColor = guiColor
+            -- Accent strokes and scroll bars, including controls added later.
+            for _, item in ipairs(accentStrokes) do
+                if item.Parent then item.Color = guiColor end
+            end
+            for _, item in ipairs(scrollFrames) do
+                if item.Parent then item.ScrollBarImageColor3 = guiColor end
+            end
+        end
+    end)
+end
+
 -- Skeleton ESP based on the supplied source: cached BasePart-to-BasePart connections.
 -- R6 and R15 parts are resolved once per character, not searched every frame.
 local function buildSkeletonConnections(character)
@@ -2523,7 +2589,7 @@ local function updateESP(player, obj)
         local distance = (root.Position - myRoot.Position).Magnitude
         local transparency = math.clamp(1 - distance / 500, 0.3, 1)
         local thickness = Options.SkeletonThickness.Value
-        local color = Options.SkeletonColor.Value
+        local color = espColor("SkeletonColor")
 
         for i, line in ipairs(obj.Bones) do
             local connection = obj.SkeletonConnections[i]
@@ -2564,7 +2630,7 @@ local function updateESP(player, obj)
 
                 obj.HeadDot.Position = Vector2.new(point.X, point.Y)
 
-                obj.HeadDot.Color = Options.HeadDotColor.Value
+                obj.HeadDot.Color = espColor("HeadDotColor")
 
                 obj.HeadDot.Radius = getHeadDotRadiusPixels()
 
@@ -2629,7 +2695,7 @@ local function updateESP(player, obj)
 
             local width, height = maxX - minX, maxY - minY
 
-            local color = Options.BoxESPColor.Value
+            local color = espColor("BoxESPColor")
 
             local thickness = Options.BoxThickness.Value
 
@@ -2703,7 +2769,7 @@ local function updateESP(player, obj)
 
         obj.Tracer.To = Vector2.new(pos.X, pos.Y)
 
-        obj.Tracer.Color = Options.TracerESPColor.Value
+        obj.Tracer.Color = espColor("TracerESPColor")
 
         obj.Tracer.Thickness = Options.TracerThickness.Value
 
@@ -2751,7 +2817,7 @@ local function updateESP(player, obj)
                     and (nameLabelSize + distanceLabelSize + 12)
                     or (nameLabelSize + 8))
             )
-            obj.Name.Color = Options.NameESPColor.Value
+            obj.Name.Color = espColor("NameESPColor")
             obj.Name.Visible = true
         end
 
@@ -2759,7 +2825,7 @@ local function updateESP(player, obj)
             -- Shared calibrated scale with ESP Preview (one decimal like kill feed).
             obj.Distance.Text = string.format("%.1fm",
                 obj._espDistance * 0.28 * 1.614)
-            obj.Distance.Color = Options.DistanceESPColor.Value
+            obj.Distance.Color = espColor("DistanceESPColor")
             if placement == "Bottom" then
                 obj.Distance.Position = Vector2.new(centreX, maxY + 7)
             elseif placement == "Left" then
@@ -2835,9 +2901,9 @@ local function updateESP(player, obj)
 
         local chamsColor = isCharacterVisible()
 
-            and Options.ChamsVisibleColor.Value
+            and espColor("ChamsVisibleColor")
 
-            or Options.ChamsInvisibleColor.Value
+            or espColor("ChamsInvisibleColor")
 
         obj.Highlight.FillColor = chamsColor
 
@@ -4302,10 +4368,18 @@ resume(create(function()
 
     SpaceRuntime:Connect(RenderStepped, function()
 
-        fov_circle.Visible = Toggles.Visible and Toggles.Visible.Value == true
-        if fov_circle.Visible then
-            fov_circle.Color = Options.Color.Value
-            fov_circle.Position = getMousePosition()
+        local shouldShow = Toggles.Visible and Toggles.Visible.Value == true
+        if fov_circle.Visible ~= shouldShow then
+            fov_circle.Visible = shouldShow
+        end
+        if not shouldShow then return end
+        local wantedColor = Options.Color.Value
+        if fov_circle.Color ~= wantedColor then
+            fov_circle.Color = wantedColor
+        end
+        local mousePosition = getMousePosition()
+        if fov_circle.Position ~= mousePosition then
+            fov_circle.Position = mousePosition
         end
 
     end)
