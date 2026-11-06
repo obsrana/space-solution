@@ -68,6 +68,71 @@ local LocalPlayer = Players.LocalPlayer
 
 local Mouse = LocalPlayer:GetMouse()
 
+-- A central lifecycle manager. The Unload button shuts down all features,
+-- disconnects non-UI events, restores modified character properties, and
+-- removes every Drawing/GUI created by this script.
+local SpaceRuntime = {Active = true, Connections = {}, Cleanups = {}}
+function SpaceRuntime:Connect(signal, callback)
+    local conn = signal:Connect(callback)
+    self.Connections[#self.Connections + 1] = conn
+    return conn
+end
+function SpaceRuntime:AddCleanup(callback)
+    self.Cleanups[#self.Cleanups + 1] = callback
+end
+function SpaceRuntime:Unload()
+    if not self.Active then return end
+    self.Active = false
+    SilentAimSettings.Enabled = false
+    SilentAimSettings.MagicBullet = false
+    SilentAimSettings.FOVVisible = false
+    -- Stop execution first; then restore state and remove resources.
+    for _, connection in ipairs(self.Connections) do
+        pcall(function() connection:Disconnect() end)
+    end
+    table.clear(self.Connections)
+    for index = #self.Cleanups, 1, -1 do
+        pcall(self.Cleanups[index])
+    end
+    table.clear(self.Cleanups)
+    if self.ClosePopup then pcall(self.ClosePopup) end
+    if self.FOVDrawing then
+        pcall(function()
+            self.FOVDrawing.Visible = false
+            self.FOVDrawing:Remove()
+        end)
+        self.FOVDrawing = nil
+    end
+    if self.WatermarkUI then
+        pcall(function() self.WatermarkUI:Destroy() end)
+        self.WatermarkUI = nil
+    end
+    if self.MainUI then
+        pcall(function() self.MainUI:Destroy() end)
+        self.MainUI = nil
+    end
+    if type(getgenv) == "function" then
+        pcall(function()
+            if getgenv().SpaceSolutionRuntime == self then
+                getgenv().SpaceSolutionRuntime = nil
+            end
+            if getgenv().SilentAimSettings == SilentAimSettings then
+                getgenv().SilentAimSettings = nil
+            end
+        end)
+    end
+end
+-- When this same revised script is re-executed, unload its previous instance.
+if type(getgenv) == "function" then
+    pcall(function()
+        local previous = getgenv().SpaceSolutionRuntime
+        if previous and previous ~= SpaceRuntime and type(previous.Unload) == "function" then
+            previous:Unload()
+        end
+        getgenv().SpaceSolutionRuntime = SpaceRuntime
+    end)
+end
+
 local GetChildren = game.GetChildren
 
 local GetPlayers = Players.GetPlayers
@@ -111,6 +176,7 @@ fov_circle.ZIndex = 999
 fov_circle.Transparency = 1
 
 fov_circle.Color = Color3.fromRGB(255, 255, 255)
+SpaceRuntime.FOVDrawing = fov_circle
 
 local ExpectedArguments = {
 
@@ -476,6 +542,8 @@ local ui = uiCreate("ScreenGui", {
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 5000
 }, guiParent)
 if type(protectgui) == "function" then pcall(protectgui, ui) end
+SpaceRuntime.MainUI = ui
+ui.Destroying:Connect(function() SpaceRuntime:Unload() end)
 
 local frame = uiCreate("CanvasGroup", {
     Size = UDim2.fromOffset(862, 524),
@@ -543,11 +611,11 @@ local function resizeMenu()
     end
 end
 resizeMenu()
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(resizeMenu)
+SpaceRuntime:Connect(workspace:GetPropertyChangedSignal("CurrentCamera"), resizeMenu)
 -- Update UIScale only when the viewport actually changes (not every frame).
 do
     local lastViewport = Vector2.new(-1, -1)
-    RunService.RenderStepped:Connect(function()
+    SpaceRuntime:Connect(RunService.RenderStepped, function()
         if not ui.Enabled then return end
         local currentCamera = workspace.CurrentCamera
         if currentCamera and currentCamera.ViewportSize ~= lastViewport then
@@ -948,6 +1016,7 @@ local function closePopup()
     end
     popup = nil
 end
+SpaceRuntime.ClosePopup = closePopup
 local function makePopup(source, width, height)
     closePopup()
     -- Dedicated layer prevents the menu and scrolling panels from covering
@@ -1177,7 +1246,7 @@ local function buildControls(content)
             headerTop.capturingBind = true
             b.Text="Press a key..."
             local listener
-            listener=UserInputService.InputBegan:Connect(function(inp)
+            listener=SpaceRuntime:Connect(UserInputService.InputBegan, function(inp)
                 if inp.UserInputType==Enum.UserInputType.Keyboard
                     or inp.UserInputType==Enum.UserInputType.MouseButton1
                     or inp.UserInputType==Enum.UserInputType.MouseButton2
@@ -1297,12 +1366,12 @@ local function buildControls(content)
         row.InputBegan:Connect(beginSlide)
         track.InputBegan:Connect(beginSlide)
         knob.InputBegan:Connect(beginSlide)
-        UserInputService.InputChanged:Connect(function(inp)
+        SpaceRuntime:Connect(UserInputService.InputChanged, function(inp)
             if dragging and inp.UserInputType==Enum.UserInputType.MouseMovement then
                 move(inp.Position.X)
             end
         end)
-        UserInputService.InputEnded:Connect(function(inp)
+        SpaceRuntime:Connect(UserInputService.InputEnded, function(inp)
             if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
         end)
         return rec
@@ -1336,32 +1405,15 @@ local function buildControls(content)
     return controls
 end
 
--- Misc movement tools, adapted from the supplied Specter Lua script.
+-- Misc movement tools: Speed and Noclip (Fly fully removed).
 -- Isolated function scope prevents exceeding Luau's local-register limit.
 ;(function()
     local state = {
-        Fly = false, FlySpeed = 1, FlyKey = "p",
         Noclip = false, Speed = false, SpeedMultiplier = 2,
         NoclipOriginal = {},
-        FlyForce = nil, FlyRoot = nil, FlyHumanoid = nil,
         SpeedHumanoid = nil, NormalWalkSpeed = nil,
         Unloaded = false,
     }
-
-    local function disableFly()
-        if state.FlyForce then
-            state.FlyForce:Destroy()
-            state.FlyForce = nil
-        end
-        if state.FlyHumanoid and state.FlyHumanoid.Parent
-            and state.FlyHumanoid.Health > 0 then
-            pcall(function()
-                state.FlyHumanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-            end)
-        end
-        state.FlyRoot = nil
-        state.FlyHumanoid = nil
-    end
 
     local function disableSpeed()
         if state.SpeedHumanoid and state.SpeedHumanoid.Parent
@@ -1407,98 +1459,13 @@ end
             tonumber(Options.MiscSpeedMultiplier.Value) or 2, 1, 10)
     end)
 
-    local fly = buildControls(makePanel("Fly", pages.Misc.columns[2]))
-    fly:AddToggle("MiscFly", {
-        Text = "Fly Enabled", Default = false
-    }):OnChanged(function()
-        state.Fly = Toggles.MiscFly.Value
-        if not state.Fly then disableFly() end
-    end)
-    fly:AddSlider("MiscFlySpeed", {
-        Text = "Fly Speed", Min = 1, Max = 10,
-        Default = 1, Rounding = 1
-    }):OnChanged(function()
-        state.FlySpeed = math.clamp(
-            tonumber(Options.MiscFlySpeed.Value) or 1, 1, 10)
-    end)
-    fly:AddKeyPicker("MiscFlyKey", {
-        Text = "Fly Key", Default = "F"
-    }):OnChanged(function()
-        state.FlyKey = tostring(Options.MiscFlyKey.Value or "p")
-    end)
-    fly:AddLabel("WASD: Move  |  Space: Up  |  Shift: Down")
-
-    -- The bind toggles the same GUI record used by the config system.
-    local keyConnection = UserInputService.InputBegan:Connect(function(input, processed)
-        if state.Unloaded or processed or headerTop.capturingBind then return end
-        if UserInputService:GetFocusedTextBox() then return end
-        local key = state.FlyKey
-        if input.KeyCode.Name == key or input.UserInputType.Name == key then
-            Toggles.MiscFly:SetValue(not Toggles.MiscFly.Value)
-        end
-    end)
-
-    -- Fly control: source uses camera-relative WASD and a 30*speed factor.
-    -- A BodyVelocity provides stable hovering between frames.
-    local flyConnection = RunService.Heartbeat:Connect(function()
-        if state.Unloaded then return end
-        local character = LocalPlayer.Character
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not state.Fly or not root or not humanoid or humanoid.Health <= 0 then
-            if state.FlyForce then disableFly() end
-            return
-        end
-
-        if state.FlyRoot ~= root or not state.FlyForce
-            or state.FlyForce.Parent ~= root then
-            disableFly()
-            local mover = Instance.new("BodyVelocity")
-            mover.Name = "SpaceSolutionFlyVelocity"
-            mover.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-            mover.P = 15000
-            mover.Velocity = Vector3.zero
-            mover.Parent = root
-            state.FlyForce = mover
-            state.FlyRoot = root
-            state.FlyHumanoid = humanoid
-        end
-
-        if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
-            humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
-        end
-        local camera = workspace.CurrentCamera
-        if not camera then return end
-        local direction = Vector3.zero
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-            direction += camera.CFrame.LookVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-            direction -= camera.CFrame.LookVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-            direction -= camera.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-            direction += camera.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            direction += Vector3.yAxis
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-            direction -= Vector3.yAxis
-        end
-        state.FlyForce.Velocity = (direction.Magnitude > 0
-            and direction.Unit or Vector3.zero) * (state.FlySpeed * 30)
-    end)
-
     -- Same WalkSpeed multiplier and movement boost as the source script.
-    local speedConnection = RunService.Stepped:Connect(function()
+    local speedConnection = SpaceRuntime:Connect(RunService.Stepped, function()
         if state.Unloaded then return end
         local character = LocalPlayer.Character
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not state.Speed or state.Fly or not humanoid or humanoid.Health <= 0 then
+        if not state.Speed or not humanoid or humanoid.Health <= 0 then
             if state.SpeedHumanoid then disableSpeed() end
             return
         end
@@ -1518,7 +1485,7 @@ end
 
     -- Restore each body's original CanCollide value after Noclip is disabled.
     local noclipParts, noclipCharacter, noclipRefresh = {}, nil, 0
-    local noclipConnection = RunService.Stepped:Connect(function()
+    local noclipConnection = SpaceRuntime:Connect(RunService.Stepped, function()
         if state.Unloaded or not state.Noclip then return end
         local character = LocalPlayer.Character
         if not character then return end
@@ -1543,20 +1510,16 @@ end
         end
     end)
 
-    local characterConnection = LocalPlayer.CharacterAdded:Connect(function()
-        disableFly()
+    local characterConnection = SpaceRuntime:Connect(LocalPlayer.CharacterAdded, function()
         disableSpeed()
         restoreCollision()
     end)
 
-    ui.Destroying:Connect(function()
+    SpaceRuntime:AddCleanup(function()
         state.Unloaded = true
-        keyConnection:Disconnect()
-        flyConnection:Disconnect()
         speedConnection:Disconnect()
         noclipConnection:Disconnect()
         characterConnection:Disconnect()
-        disableFly()
         disableSpeed()
         restoreCollision()
     end)
@@ -1575,6 +1538,7 @@ local watermarkGui = uiCreate("ScreenGui", {
     Name = "SpaceSolutionWatermark", ResetOnSpawn = false,
     IgnoreGuiInset = true, DisplayOrder = 5001
 }, guiParent)
+SpaceRuntime.WatermarkUI = watermarkGui
 local watermarkBar = uiCreate("Frame", {
     Name = "WatermarkBar", Position = UDim2.new(1, -292, 0, 12),
     Size = UDim2.fromOffset(280, 32), BackgroundColor3 = Color3.fromRGB(24, 24, 30),
@@ -1684,9 +1648,8 @@ globalsControls:AddButton("Hide Menu", function()
     closePopup()
     animateMenu(false) -- Press the configured Menu Key to reopen.
 end)
-globalsControls:AddButton("Unload UI", function()
-    watermarkGui:Destroy()
-    ui:Destroy()
+globalsControls:AddButton("Unload Menu", function()
+    SpaceRuntime:Unload()
 end)
 local unifiedConfigContent = nil
 local Library = {}
@@ -1738,6 +1701,7 @@ local listContent=makePanel("Players",pages.List.columns[1])
 local listTitle=controlLabel(listContent,"Players currently in this server",24,true)
 local listItems={}
 local function renderList()
+    if not SpaceRuntime.Active then return end
     for _,item in ipairs(listItems) do item:Destroy() end
     listItems={}
     for _,plr in ipairs(Players:GetPlayers()) do
@@ -1747,8 +1711,8 @@ local function renderList()
     end
 end
 renderList()
-Players.PlayerAdded:Connect(renderList)
-Players.PlayerRemoving:Connect(function() task.defer(renderList) end)
+SpaceRuntime:Connect(Players.PlayerAdded, renderList)
+SpaceRuntime:Connect(Players.PlayerRemoving, function() task.defer(renderList) end)
 
 -- Drag by top bar, toggle menu with Delete (configurable).
 local drag,grab,orig=false,nil,nil
@@ -1757,18 +1721,18 @@ header.InputBegan:Connect(function(inp)
         drag=true;grab=inp.Position;orig=frame.Position
     end
 end)
-UserInputService.InputChanged:Connect(function(inp)
+SpaceRuntime:Connect(UserInputService.InputChanged, function(inp)
     if drag and inp.UserInputType==Enum.UserInputType.MouseMovement then
         local d=inp.Position-grab
         frame.Position=UDim2.new(orig.X.Scale,orig.X.Offset+d.X/uiScale.Scale,
             orig.Y.Scale,orig.Y.Offset+d.Y/uiScale.Scale)
     end
 end)
-UserInputService.InputEnded:Connect(function(inp)
+SpaceRuntime:Connect(UserInputService.InputEnded, function(inp)
     if inp.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end
 end)
 -- Global menu hotkey: works even while the ScreenGui is hidden.
-UserInputService.InputBegan:Connect(function(inp, processed)
+SpaceRuntime:Connect(UserInputService.InputBegan, function(inp, processed)
     if UserInputService:GetFocusedTextBox() then return end
     if inp.UserInputType ~= Enum.UserInputType.Keyboard then return end
     if inp.KeyCode == menuKey then
@@ -1830,7 +1794,8 @@ ESPControls:AddToggle("NameESPEnabled", {Text = "Name ESP", Default = false}):Ad
 
 ESPControls:AddDropdown("ESPNameType", {Text = "Name Type", Default = "Display Name", Values = {"Display Name", "Username"}, AllowNull = false})
 
--- Separate distance overlay; uses real-world metres (1 Roblox stud = 0.28 m).
+-- Fixed Distance ESP calibration (no slider): 110m -> approximately 177.5m.
+-- ESP Preview uses the same fixed distance scale.
 ESPControls:AddToggle("DistanceESPEnabled", {Text = "Distance ESP", Default = false}):AddColorPicker("DistanceESPColor", {Default = Color3.fromRGB(255,255,255), Title = "Distance Color"})
 
 ESPControls:AddDropdown("ESPDistancePosition", {
@@ -2200,7 +2165,7 @@ previewName.Parent = previewCanvas
 do
     local distanceLabel = previewName:Clone()
     distanceLabel.Name = "PreviewDistance"
-    distanceLabel.Text = "120m"
+    distanceLabel.Text = "180.8m" -- default preview at 400 studs, with calibration
     distanceLabel.Size = UDim2.fromOffset(60, 26)
     distanceLabel.Position = UDim2.fromOffset(72, 18)
     distanceLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -2270,7 +2235,9 @@ local function refreshESPPreview()
     local previewDistance = previewCanvas:FindFirstChild("PreviewDistance")
     if previewDistance then
         previewDistance.Visible = pToggle("DistanceESPEnabled")
-        previewDistance.Text = "120m"
+        -- Same distance multiplier as the in-game ESP; dummy is 400 studs away.
+        previewDistance.Text = string.format("%.1fm",
+            400 * 0.28 * 1.614)
         previewDistance.TextColor3 = pOption("DistanceESPColor", Color3.new(1, 1, 1))
         previewDistance.TextSize = pOption("DistanceESPTextSize", 15)
         local distancePosition = pOption("ESPDistancePosition", "Top")
@@ -2312,7 +2279,7 @@ end
 
 refreshESPPreview()
 local previewUpdateTime = 0
-RunService.Heartbeat:Connect(function(dt)
+SpaceRuntime:Connect(RunService.Heartbeat, function(dt)
     previewUpdateTime = previewUpdateTime + dt
     if previewUpdateTime < 0.1 then return end
     previewUpdateTime = 0
@@ -2504,6 +2471,12 @@ local function removeESP(player)
     ESPObjects[player] = nil
 
 end
+
+SpaceRuntime:AddCleanup(function()
+    for player in pairs(ESPObjects) do
+        pcall(removeESP, player)
+    end
+end)
 
 local function updateESP(player, obj)
 
@@ -2783,7 +2756,9 @@ local function updateESP(player, obj)
         end
 
         if Toggles.DistanceESPEnabled.Value then
-            obj.Distance.Text = string.format("%dm", math.floor(obj._espDistance * 0.28 + 0.5))
+            -- Shared calibrated scale with ESP Preview (one decimal like kill feed).
+            obj.Distance.Text = string.format("%.1fm",
+                obj._espDistance * 0.28 * 1.614)
             obj.Distance.Color = Options.DistanceESPColor.Value
             if placement == "Bottom" then
                 obj.Distance.Position = Vector2.new(centreX, maxY + 7)
@@ -2880,9 +2855,9 @@ end
 
 for _, player in ipairs(Players:GetPlayers()) do createESP(player) end
 
-Players.PlayerAdded:Connect(createESP)
+SpaceRuntime:Connect(Players.PlayerAdded, createESP)
 
-Players.PlayerRemoving:Connect(removeESP)
+SpaceRuntime:Connect(Players.PlayerRemoving, removeESP)
 
 -- Resolve on-screen collisions between the REAL Drawing labels every frame.
 -- Scoped to avoid adding to the main chunk's 200-local-register limit.
@@ -2904,7 +2879,7 @@ do
     -- Allows the user to trade render smoothness for CPU/GPU load.
     local espElapsed = 0
     local espHidden = false
-    RunService.RenderStepped:Connect(function(dt)
+    SpaceRuntime:Connect(RunService.RenderStepped, function(dt)
         local enabled = Toggles.SkeletonEnabled.Value or Toggles.HeadDotEnabled.Value
             or Toggles.BoxESPEnabled.Value or Toggles.TracerESPEnabled.Value
             or Toggles.NameESPEnabled.Value or Toggles.DistanceESPEnabled.Value
@@ -3066,6 +3041,7 @@ local function matchesAimKey(input)
 end
 
 local function isAimActive()
+    if not SpaceRuntime.Active then return false end
 
     local mode = getAimMode()
 
@@ -3101,7 +3077,7 @@ local function syncAimEnabled()
 
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+SpaceRuntime:Connect(UserInputService.InputBegan, function(input, gameProcessed)
 
     if UserInputService:GetFocusedTextBox() then return end
 
@@ -3127,7 +3103,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
 end)
 
-UserInputService.InputEnded:Connect(function(input)
+SpaceRuntime:Connect(UserInputService.InputEnded, function(input)
 
     if not matchesAimKey(input) then return end
 
@@ -3456,7 +3432,7 @@ local TriggerBOX = GeneralTab:AddRightTabbox("Trigger Bot") do
     syncTriggerEnabled()
 end
 
-UserInputService.InputBegan:Connect(function(input, processed)
+SpaceRuntime:Connect(UserInputService.InputBegan, function(input, processed)
     if processed or UserInputService:GetFocusedTextBox() then return end
     if not matchesTriggerKey(input) then return end
     if triggerMode() == "Toggle" then
@@ -3466,7 +3442,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
     syncTriggerEnabled()
 end)
-UserInputService.InputEnded:Connect(function(input)
+SpaceRuntime:Connect(UserInputService.InputEnded, function(input)
     if triggerMode() == "Hold" and matchesTriggerKey(input) then
         triggerKeyHeld = false
         syncTriggerEnabled()
@@ -3475,7 +3451,7 @@ end)
 
 do
 local lastTriggerCheck = 0
-RunService.RenderStepped:Connect(function()
+SpaceRuntime:Connect(RunService.RenderStepped, function()
     if not TriggerBotSettings.Enabled then return end
     local now = os.clock()
     if now - lastTriggerCheck < 1 / 30 then return end
@@ -3484,9 +3460,11 @@ RunService.RenderStepped:Connect(function()
     if not triggerTargetValid() then return end
     if type(mouse1click) == "function" then
         triggerLastShot = now
+        if headerTop.SoundShot then headerTop.SoundShot() end
         mouse1click()
     elseif type(mouse1press) == "function" and type(mouse1release) == "function" then
         triggerLastShot = now
+        if headerTop.SoundShot then headerTop.SoundShot() end
         mouse1press()
         task.defer(mouse1release)
     end
@@ -3494,6 +3472,445 @@ end)
 end
 
 end)() -- Trigger Bot isolated to keep main-chunk register usage low
+
+-- SpaceSolution client-side Hit/Kill Sounds.
+-- The game-specific weapon's server acknowledgement is unavailable in a universal script.
+-- Attribute feedback to recent local shots and/or a Humanoid's "creator" tag.
+;(function()
+    local soundService = game:GetService("SoundService")
+    local soundObjects = {}
+    local watched = {}
+    local playerConnections = {}
+    local connections = {}
+    local markedShots = {}
+    local assetCache = {} -- Resolve custom audio files once, not on every hit.
+    local shotWindow = 1.25
+    local longKillThreshold = 110 -- meters as shown by calibrated Distance ESP
+    local distanceScale = 0.28 * 1.614 -- must match Distance ESP / ESP Preview
+
+    -- Store shot distance, rather than relying on the victim's position after death.
+    local function displayedDistance(player)
+        local localCharacter = LocalPlayer.Character
+        local victimCharacter = player and player.Character
+        local ownRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+        local victimRoot = victimCharacter and victimCharacter:FindFirstChild("HumanoidRootPart")
+        if not (ownRoot and victimRoot) then return nil end
+        return (ownRoot.Position - victimRoot.Position).Magnitude * distanceScale
+    end
+
+    -- Kill sound files belong in this folder in the executor's workspace.
+    -- Creates the folder once; does not overwrite the user's audio files.
+    local killSoundFolder = MainFileName .. "/KillSounds"
+    local noKillFiles = "(No audio files found)"
+
+    local function ensureKillSoundFolder()
+        if type(makefolder) ~= "function" then return end
+        if type(isfolder) == "function" then
+            local ok, exists = pcall(isfolder, killSoundFolder)
+            if ok and exists then return end
+        end
+        pcall(makefolder, killSoundFolder)
+    end
+
+    local function listKillSoundFiles()
+        ensureKillSoundFolder()
+        local choices = {}
+        if type(listfiles) == "function" then
+            local ok, paths = pcall(listfiles, killSoundFolder)
+            if ok and type(paths) == "table" then
+                for _, path in ipairs(paths) do
+                    local filename = tostring(path):gsub("\\", "/"):match("([^/]+)$")
+                    local lower = filename and filename:lower() or ""
+                    if (lower:match("%.mp3$") or lower:match("%.wav$")
+                        or lower:match("%.ogg$") or lower:match("%.vsnd_c$"))
+                        and not table.find(choices, filename) then
+                        table.insert(choices, filename)
+                    end
+                end
+            end
+        end
+        table.sort(choices, function(a, b) return a:lower() < b:lower() end)
+        if #choices == 0 then choices[1] = noKillFiles end
+        return choices
+    end
+
+    ensureKillSoundFolder()
+
+    -- Resolve audio with diagnostics rather than silently doing nothing.
+    -- A valid Roblox asset ID needs permission to be played in the current game.
+    local soundStatusLabel
+    local soundStatusRevision = 0
+    local function soundStatus(message, good)
+        if not SpaceRuntime.Active then return end
+        soundStatusRevision = soundStatusRevision + 1
+        local revision = soundStatusRevision
+        if soundStatusLabel and soundStatusLabel.Parent then
+            soundStatusLabel.Text = tostring(message)
+            soundStatusLabel.TextColor3 = good and Color3.fromRGB(130, 224, 161)
+                or Color3.fromRGB(248, 134, 139)
+            soundStatusLabel.Visible = true
+            task.delay(8, function()
+                if soundStatusLabel and soundStatusLabel.Parent
+                    and revision == soundStatusRevision then
+                    soundStatusLabel.Visible = false
+                end
+            end)
+        end
+        if not good then warn("SpaceSolution Sounds: " .. tostring(message)) end
+    end
+
+    local function fileExists(path)
+        if type(isfile) ~= "function" then return false end
+        local ok, yes = pcall(isfile, path)
+        return ok and yes == true
+    end
+
+    local function actualFilePath(value)
+        -- User can type just "sound.mp3" instead of the whole workspace path.
+        local normalized = value:gsub("\\", "/"):gsub("^%s+", ""):gsub("%s+$", "")
+        local candidates = {normalized}
+        if not normalized:find("/", 1, true) then
+            candidates[#candidates + 1] = killSoundFolder .. "/" .. normalized
+        elseif normalized:sub(1, 11):lower() == "killsounds/" then
+            candidates[#candidates + 1] = MainFileName .. "/" .. normalized
+        end
+        for _, candidate in ipairs(candidates) do
+            if fileExists(candidate) then return candidate end
+        end
+        return candidates[#candidates]
+    end
+
+    local function soundId(kind)
+        -- All three sounds come exclusively from spacesolution/KillSounds/.
+        local picker = Options[kind .. "SoundFile"]
+        local filename = picker and picker.Value
+        if type(filename) ~= "string" or filename == noKillFiles
+            or filename:find("/", 1, true) or filename:find("\\", 1, true)
+            or not (filename:lower():match("%.mp3$")
+                or filename:lower():match("%.wav$")
+                or filename:lower():match("%.ogg$")
+                or filename:lower():match("%.vsnd_c$")) then
+            return nil, "Brak pliku. Wrzuc audio do spacesolution/KillSounds i kliknij Rescan."
+        end
+        local value = killSoundFolder .. "/" .. filename
+
+        -- Roblox Sound cannot directly decode the Source 2 VSND_C container.
+        -- A converted .mp3/.ogg/.wav with the same stem is supported.
+        local filePath = actualFilePath(value)
+        local originalPath = filePath
+        if value:lower():match("%.vsnd_c$") then
+            local base = filePath:sub(1, -8)
+            local exported
+            for _, ext in ipairs({"mp3", "wav", "ogg"}) do
+                local candidate = base .. "." .. ext
+                if fileExists(candidate) then exported = candidate; break end
+            end
+            if exported then
+                filePath = exported
+            else
+                -- Some VSND_C files contain a directly embedded OGG/MP3/WAV stream.
+                -- Extraction is best-effort; other encodings need external export.
+                if type(readfile) == "function" and type(writefile) == "function"
+                    and fileExists(filePath) then
+                    local ok, data = pcall(readfile, filePath)
+                    if ok and type(data) == "string" and #data <= 16 * 1024 * 1024 then
+                        local ogg = data:find("OggS", 17, true)
+                        local mp3 = data:find("ID3", 17, true)
+                        local wav = data:find("RIFF", 17, true)
+                        if wav and data:sub(wav + 8, wav + 11) ~= "WAVE" then wav = nil end
+                        local offset, ext
+                        if ogg then offset, ext = ogg, "ogg"
+                        elseif mp3 then offset, ext = mp3, "mp3"
+                        elseif wav then offset, ext = wav, "wav" end
+                        if offset then
+                            local hash = 5381
+                            for i = 1, #filePath do
+                                hash = (hash * 33 + filePath:byte(i)) % 2147483647
+                            end
+                            local extracted = string.format("%s/vsndc_audio_%d.%s", MainFileName, hash, ext)
+                            if pcall(writefile, extracted, data:sub(offset)) then
+                                filePath = extracted
+                            end
+                        end
+                    end
+                end
+                if filePath == originalPath then
+                    return nil, "VSND_C nie jest odtwarzany bezposrednio. Wyeksportuj WAV/MP3/OGG."
+                end
+            end
+        elseif not (value:lower():match("%.mp3$") or value:lower():match("%.ogg$")
+            or value:lower():match("%.wav$")) then
+            return nil, "Plik musi miec format MP3, WAV lub OGG."
+        end
+
+        -- Some executors can load a local asset but do not expose isfile().
+        -- Only reject missing files when the check itself is available.
+        if type(isfile) == "function" and not fileExists(filePath) then
+            return nil, "Nie znaleziono pliku: " .. filePath
+        end
+        -- Failed paths are deliberately NOT cached: a newly added audio file can be
+        -- tested immediately without restarting the script or clearing a negative cache.
+        if assetCache[filePath] then return assetCache[filePath] end
+        local assetFunction = type(getcustomasset) == "function" and getcustomasset
+            or type(getsynasset) == "function" and getsynasset
+        if type(assetFunction) ~= "function" then
+            return nil, "Executor nie obsluguje getcustomasset/getsynasset dla lokalnych plikow."
+        end
+        local ok, asset = pcall(assetFunction, filePath)
+        if ok and type(asset) == "string" and asset ~= "" then
+            assetCache[filePath] = asset
+            return asset
+        end
+        return nil, "Nie udalo sie zaladowac pliku: " .. filePath
+    end
+
+    local function play(kind, force)
+        if not SpaceRuntime.Active then return false end
+        local enabled = Toggles[kind .. "SoundsEnabled"]
+        if not force and (not enabled or not enabled.Value) then return false end
+        local id, err = soundId(kind)
+        if not id then
+            if force then soundStatus(err or "Nie mozna zaladowac dzwieku.", false) end
+            return false
+        end
+        local sound = soundObjects[kind]
+        if not sound then
+            sound = Instance.new("Sound")
+            sound.Name = "SpaceSolution" .. kind .. "Sound"
+            sound.Parent = soundService
+            soundObjects[kind] = sound
+        end
+        local success, playError = pcall(function()
+            if sound.SoundId ~= id then sound.SoundId = id end
+            sound.Volume = math.clamp(tonumber(Options[kind .. "SoundVolume"]
+                and Options[kind .. "SoundVolume"].Value) or 0.8, 0, 2)
+            sound.PlaybackSpeed = math.clamp(tonumber(Options[kind .. "SoundPitch"]
+                and Options[kind .. "SoundPitch"].Value) or 1, 0.5, 2)
+            sound:Stop()
+            sound.TimePosition = 0
+            sound:Play()
+        end)
+        if not success then
+            if force then soundStatus("Blad odtwarzania: " .. tostring(playError), false) end
+            return false
+        end
+        if force then
+            soundStatus("Test " .. kind .. ": odtwarzanie wyslane do Roblox.", true)
+            local requestedId = id
+            task.delay(4, function()
+                if not SpaceRuntime.Active or soundObjects[kind] ~= sound
+                    or sound.SoundId ~= requestedId then return end
+                if not sound.IsLoaded then
+                    soundStatus("Roblox nie zaladowal pliku. Sprawdz format audio (MP3/WAV/OGG).", false)
+                end
+            end)
+        end
+        return true
+    end
+
+    -- Folder only: no Custom Sound IDs, presets or manual paths.
+    -- One shared directory for Hit, Kill and Long Kill sounds.
+    local feedback = buildControls(makePanel("Hit & Kill Sounds", pages.Misc.columns[2]))
+    local initialFiles = listKillSoundFiles()
+    local firstFile = initialFiles[1]
+
+    feedback:AddToggle("HitSoundsEnabled", {Text = "Hit Sounds", Default = false})
+    feedback:AddDropdown("HitSoundFile", {
+        Text = "Hit Sound File", Values = initialFiles,
+        Default = firstFile, AllowNull = false
+    })
+    feedback:AddSlider("HitSoundVolume", {
+        Text = "Hit Volume", Min = 0, Max = 2, Default = 0.8, Rounding = 2
+    })
+    feedback:AddSlider("HitSoundPitch", {
+        Text = "Hit Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddButton("Test Hit Sound", function() play("Hit", true) end)
+
+    feedback:AddToggle("KillSoundsEnabled", {Text = "Kill Sounds", Default = false})
+    feedback:AddDropdown("KillSoundFile", {
+        Text = "Kill Sound File", Values = initialFiles,
+        Default = firstFile, AllowNull = false
+    })
+    feedback:AddSlider("KillSoundVolume", {
+        Text = "Kill Volume", Min = 0, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddSlider("KillSoundPitch", {
+        Text = "Kill Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddButton("Test Kill Sound", function() play("Kill", true) end)
+
+    feedback:AddToggle("LongKillSoundsEnabled", {Text = "Long Kill Sounds (110m+)", Default = false})
+    feedback:AddDropdown("LongKillSoundFile", {
+        Text = "Long Kill Sound File", Values = initialFiles,
+        Default = firstFile, AllowNull = false
+    })
+    feedback:AddSlider("LongKillSoundVolume", {
+        Text = "Long Kill Volume", Min = 0, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddSlider("LongKillSoundPitch", {
+        Text = "Long Kill Pitch", Min = 0.5, Max = 2, Default = 1, Rounding = 2
+    })
+    feedback:AddButton("Test Long Kill Sound", function() play("LongKill", true) end)
+
+    -- Feedback appears only after using Test, never as permanent help text.
+    soundStatusLabel = uiText(feedback.Container, "", 10, MUTED)
+    soundStatusLabel.Name = "SoundTestStatus"
+    soundStatusLabel.TextWrapped = true
+    soundStatusLabel.Size = UDim2.new(1, -4, 0, 37)
+    soundStatusLabel.Visible = false
+
+    feedback:AddButton("Rescan Sound Files", function()
+        table.clear(assetCache)
+        local files = listKillSoundFiles()
+        for _, kind in ipairs({"Hit", "Kill", "LongKill"}) do
+            local picker = Options[kind .. "SoundFile"]
+            if picker then
+                local previous = picker.Value
+                picker:SetValues(files)
+                if not previous or not table.find(files, previous) then
+                    picker:SetValue(files[1])
+                end
+            end
+        end
+    end)
+
+    local function getTargetPlayer(part)
+        if not part then return nil end
+        local character = part:FindFirstAncestorOfClass("Model")
+        local player = character and Players:GetPlayerFromCharacter(character)
+        if player and player ~= LocalPlayer then return player end
+        return nil
+    end
+
+    local function markShot()
+        if not SpaceRuntime.Active then return end
+        if not ((Toggles.HitSoundsEnabled and Toggles.HitSoundsEnabled.Value)
+            or (Toggles.KillSoundsEnabled and Toggles.KillSoundsEnabled.Value)
+            or (Toggles.LongKillSoundsEnabled and Toggles.LongKillSoundsEnabled.Value)) then return end
+        local selected = nil
+        -- If Silent Aim is active, the intended target may be different from Mouse.Target.
+        if isAimActive() then
+            local ok, target = pcall(getClosestPlayer)
+            if ok then selected = getTargetPlayer(target) end
+        end
+        if not selected then
+            local ok, target = pcall(function() return Mouse.Target end)
+            if ok then selected = getTargetPlayer(target) end
+        end
+        if selected then
+            markedShots[selected] = {at = os.clock(), distance = displayedDistance(selected)}
+        end
+    end
+    headerTop.SoundShot = markShot
+
+    table.insert(connections, SpaceRuntime:Connect(UserInputService.InputBegan, function(input, processed)
+        if processed or UserInputService:GetFocusedTextBox() then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then markShot() end
+    end))
+
+    local function unbind(player)
+        local rec = watched[player]
+        if rec then
+            for _, connection in ipairs(rec.connections) do connection:Disconnect() end
+            watched[player] = nil
+        end
+        markedShots[player] = nil
+    end
+
+    local function creatorMatches(humanoid)
+        local tag = humanoid:FindFirstChild("creator") or humanoid:FindFirstChild("Creator")
+        return tag and tag:IsA("ObjectValue") and tag.Value == LocalPlayer
+    end
+
+    local function bindCharacter(player, character)
+        if not SpaceRuntime.Active or not ui.Parent then return end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+            or character:WaitForChild("Humanoid", 4)
+        if not humanoid or player.Character ~= character or not SpaceRuntime.Active or not ui.Parent then return end
+        unbind(player)
+        local rec = {humanoid = humanoid, lastHealth = humanoid.Health,
+            creditedTime = -100, creditedDistance = nil, lastHitSound = -100,
+            killPlayed = false, connections = {}}
+        watched[player] = rec
+
+        local function recentShot()
+            local shot = markedShots[player]
+            return shot and os.clock() - shot.at <= shotWindow and shot or nil
+        end
+        local function credited()
+            return creatorMatches(humanoid) or recentShot() ~= nil
+        end
+        local function onDeath()
+            if rec.killPlayed or watched[player] ~= rec then return end
+            if credited() or os.clock() - rec.creditedTime <= 2.5 then
+                rec.killPlayed = true
+                local shot = recentShot()
+                local meters = (shot and shot.distance)
+                    or rec.creditedDistance or displayedDistance(player)
+                local longEnabled = Toggles.LongKillSoundsEnabled
+                    and Toggles.LongKillSoundsEnabled.Value
+                if longEnabled and meters and meters >= longKillThreshold then
+                    play("LongKill", false)
+                else
+                    play("Kill", false)
+                end
+            end
+        end
+        table.insert(rec.connections, SpaceRuntime:Connect(humanoid.HealthChanged, function(health)
+            if watched[player] ~= rec then return end
+            local old = rec.lastHealth
+            rec.lastHealth = health
+            if old <= health then return end
+            if credited() then
+                rec.creditedTime = os.clock()
+                local shot = recentShot()
+                rec.creditedDistance = (shot and shot.distance) or displayedDistance(player)
+                if health <= 0 then
+                    onDeath()
+                elseif os.clock() - rec.lastHitSound >= 0.08 then
+                    rec.lastHitSound = os.clock()
+                    play("Hit", false)
+                end
+            end
+        end))
+        table.insert(rec.connections, SpaceRuntime:Connect(humanoid.Died, onDeath))
+    end
+
+    local function watchPlayer(player)
+        if not SpaceRuntime.Active or player == LocalPlayer then return end
+        local conns = {}
+        playerConnections[player] = conns
+        table.insert(conns, SpaceRuntime:Connect(player.CharacterAdded, function(char)
+            task.spawn(bindCharacter, player, char)
+        end))
+        table.insert(conns, SpaceRuntime:Connect(player.CharacterRemoving, function()
+            unbind(player)
+        end))
+        if player.Character then task.spawn(bindCharacter, player, player.Character) end
+    end
+    for _, player in ipairs(Players:GetPlayers()) do watchPlayer(player) end
+    table.insert(connections, SpaceRuntime:Connect(Players.PlayerAdded, watchPlayer))
+    table.insert(connections, SpaceRuntime:Connect(Players.PlayerRemoving, function(player)
+        unbind(player)
+        local conns = playerConnections[player]
+        if conns then
+            for _, connection in ipairs(conns) do connection:Disconnect() end
+            playerConnections[player] = nil
+        end
+    end))
+
+    SpaceRuntime:AddCleanup(function()
+        headerTop.SoundShot = nil
+        for _, connection in ipairs(connections) do connection:Disconnect() end
+        for player in pairs(watched) do unbind(player) end
+        for player, conns in pairs(playerConnections) do
+            for _, connection in ipairs(conns) do connection:Disconnect() end
+            playerConnections[player] = nil
+        end
+        for _, sound in pairs(soundObjects) do sound:Destroy() end
+    end)
+end)()
 
 -- Hitbox Expander adapted from the supplied Specter script.
 -- Kept inside a function scope to avoid Luau's top-level register limit.
@@ -3779,7 +4196,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
 
     local elapsed = 0
     local heartbeatConnection
-    heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+    heartbeatConnection = SpaceRuntime:Connect(RunService.Heartbeat, function(deltaTime)
         elapsed = elapsed + deltaTime
         if elapsed < 0.15 then return end
         elapsed = 0
@@ -3790,7 +4207,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
         end
         updateHitboxes()
     end)
-    ui.Destroying:Connect(function()
+    SpaceRuntime:AddCleanup(function()
         heartbeatConnection:Disconnect()
         restoreAll()
     end)
@@ -3893,7 +4310,7 @@ end)() -- End of scoped Prediction / FOV / ConfigManager controls
 
 resume(create(function()
 
-    RenderStepped:Connect(function()
+    SpaceRuntime:Connect(RenderStepped, function()
 
         fov_circle.Visible = Toggles.Visible and Toggles.Visible.Value == true
         if fov_circle.Visible then
@@ -3913,6 +4330,7 @@ do
         local oldNamecall
 
         oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    if not SpaceRuntime.Active then return oldNamecall(...) end
 
     local Method = getnamecallmethod()
 
@@ -4042,6 +4460,7 @@ end))
 local oldIndex = nil
 
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+    if not SpaceRuntime.Active then return oldIndex(self, Index) end
 
     if self == Mouse and not checkcaller() and isAimActive() and Options.Method.Value == "Mouse.Hit/Target" and getClosestPlayer() then
 
