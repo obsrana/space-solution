@@ -1554,6 +1554,8 @@ local globalsControls = buildControls(globalsContent)
 -- Appearance controls are stored as normal options for the existing config manager.
 -- One switch controls both GUI and watermark rainbow colors.
 globalsControls:AddToggle("GejMode", {Text = "Gej Mode", Default = false})
+-- Speed of the shared GUI + watermark rainbow; saved with other settings.
+globalsControls:AddSlider("GejModeRainbowSpeed", {Text = "Rainbow Speed", Min = 0.02, Max = 1.0, Default = 0.12, Rounding = 2})
 globalsControls:AddToggle("WaterMark", {Text = "WaterMark", Default = false})
 -- Separate ScreenGui keeps the watermark visible while the menu is hidden.
 local oldWatermarkGui = guiParent:FindFirstChild("SpaceSolutionWatermark")
@@ -1571,12 +1573,12 @@ local watermarkBar = uiCreate("Frame", {
 uiRound(watermarkBar, 5)
 uiCreate("UIStroke", {Color = Color3.fromRGB(105, 105, 116), Thickness = 1}, watermarkBar)
 local watermark = uiText(watermarkBar,
-    "SpaceSolution | User - " .. LocalPlayer.Name, 14, WHITE, true)
+    "SpaceSolution | User - " .. LocalPlayer.Name, 14, Color3.fromRGB(255, 255, 255), true)
 watermark.Position = UDim2.fromOffset(12, 0)
 watermark.Size = UDim2.new(1, -24, 1, -2)
 local watermarkLine = uiCreate("Frame", {
     Position = UDim2.new(0, 0, 1, -2), Size = UDim2.new(1, 0, 0, 2),
-    BackgroundColor3 = ACCENT, BorderSizePixel = 0
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0
 }, watermarkBar)
 Toggles.WaterMark:OnChanged(function()
     watermarkBar.Visible = Toggles.WaterMark.Value
@@ -2330,14 +2332,14 @@ do
         themeElapsed = themeElapsed + dt
         if themeElapsed < 0.05 then return end
         themeElapsed = 0
-        ThemeState.RainbowSpeed = 0.12
+        ThemeState.RainbowSpeed = math.clamp(tonumber(Options.GejModeRainbowSpeed and Options.GejModeRainbowSpeed.Value) or 0.12, 0.02, 1.0)
         ThemeState.ESPRainbow = Toggles.ESPRainbow.Value
         local gejMode = Toggles.GejMode.Value == true
         ThemeState.GUIRainbow = gejMode
-        ThemeState.WatermarkRainbow = gejMode
+        ThemeState.WatermarkRainbow = false
         local sharedColor = gejMode and rainbowColor(os.clock()) or ACCENT
         local guiColor = sharedColor
-        local markColor = sharedColor
+        local markColor = Color3.fromRGB(255, 255, 255)
         if watermarkLine.BackgroundColor3 ~= markColor then watermarkLine.BackgroundColor3 = markColor end
         if watermark.TextColor3 ~= markColor then watermark.TextColor3 = markColor end
         if guiColor ~= themeLastColor then
@@ -3550,7 +3552,7 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
     local connections = {}
     local markedShots = {}
     local assetCache = {} -- Resolve custom audio files once, not on every hit.
-    local shotWindow = 1.25
+    local shotWindow = 5.0 -- allow delayed long-range kills to be correlated
     local longKillThreshold = 110 -- meters as shown by calibrated Distance ESP
     local hitSoundMaxDistance = 99 -- Hit Sound only up to and including 99m
     local distanceScale = 0.28 * 1.614 -- must match Distance ESP / ESP Preview
@@ -3850,6 +3852,32 @@ end)() -- Trigger Bot isolated to keep main-chunk register usage low
         if not selected then
             local ok, target = pcall(function() return Mouse.Target end)
             if ok then selected = getTargetPlayer(target) end
+        end
+        -- Long-range shots often have no Mouse.Target (the ray hits terrain or
+        -- misses the tiny character). Use a small crosshair cone as a fallback.
+        if not selected then
+            local camera = workspace.CurrentCamera
+            if camera then
+                local cursor = UserInputService:GetMouseLocation()
+                local bestPixels = 75
+                for _, candidate in ipairs(Players:GetPlayers()) do
+                    if candidate ~= LocalPlayer then
+                        local character = candidate.Character
+                        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                        local root = character and character:FindFirstChild("HumanoidRootPart")
+                        if humanoid and humanoid.Health > 0 and root then
+                            local point, onScreen = camera:WorldToViewportPoint(root.Position)
+                            if onScreen then
+                                local pixels = (Vector2.new(point.X, point.Y) - cursor).Magnitude
+                                if pixels < bestPixels then
+                                    bestPixels = pixels
+                                    selected = candidate
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
         if selected then
             markedShots[selected] = {at = os.clock(), distance = displayedDistance(selected)}
