@@ -65,6 +65,11 @@ local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
+local SpaceFriends = {}
+local function isSpaceFriend(player)
+    return player ~= nil and SpaceFriends[player.UserId] == true
+end
+
 
 local Mouse = LocalPlayer:GetMouse()
 
@@ -433,7 +438,7 @@ local function getClosestPlayer()
 
     for _, Player in next, GetPlayers(Players) do
 
-        if Player == LocalPlayer then continue end
+        if Player == LocalPlayer or isSpaceFriend(Player) then continue end
 
         if Toggles.TeamCheck.Value and Player.Team == LocalPlayer.Team then continue end
 
@@ -1722,23 +1727,119 @@ function Library:CreateWindow(_)
     return window
 end
 
+-- Friend list shared by combat targeting, hitboxes and ESP.
+-- UserId keys stay stable even if a player changes their display name.
 -- Side page "List": show real connected players, with no additional gameplay hooks.
-local listContent=makePanel("Players",pages.List.columns[1])
-local listTitle=controlLabel(listContent,"Players currently in this server",24,true)
+local listContent=makePanel("Players / Friends",pages.List.columns[1])
+controlLabel(listContent,"Add Friend chroni przed celowaniem. Friend ESP jest osobne.",40,true)
 local listItems={}
-local function renderList()
+local FriendESPEnabled={}
+local FriendHighlights={}
+-- Dedicated color picker; saved automatically with other Options in CFG.
+local friendAppearance=makePanel("Friend ESP Settings",pages.List.columns[2])
+addColorControl(friendAppearance,"FriendESPColor",{
+    Title="Friend ESP Color", Default=Color3.fromRGB(80,255,150)
+})
+
+
+local function clearFriendHighlight(userId)
+    local highlight=FriendHighlights[userId]
+    if highlight then pcall(function() highlight:Destroy() end) end
+    FriendHighlights[userId]=nil
+end
+
+local renderList
+renderList=function()
     if not SpaceRuntime.Active then return end
     for _,item in ipairs(listItems) do item:Destroy() end
-    listItems={}
+    table.clear(listItems)
     for _,plr in ipairs(Players:GetPlayers()) do
-        local entry=uiText(listContent,plr.DisplayName.."  (@"..plr.Name..")",11,WHITE)
-        entry.Size=UDim2.new(1,-4,0,29)
-        table.insert(listItems,entry)
+        if plr ~= LocalPlayer then
+            local friend=isSpaceFriend(plr)
+            local row=uiCreate("Frame",{
+                BackgroundTransparency=1, Size=UDim2.new(1,-4,0,64)
+            },listContent)
+            local label=uiText(row,plr.DisplayName.." (@"..plr.Name..")",10,WHITE)
+            label.Size=UDim2.new(1,-112,0,30)
+            local button=uiButton(row,friend and "Remove Friend" or "Add Friend",
+                friend and Color3.fromRGB(45,90,70) or INPUT)
+            button.Size=UDim2.fromOffset(105,26)
+            button.Position=UDim2.new(1,-108,0,3)
+            button.TextSize=10
+            button.MouseButton1Click:Connect(function()
+                if isSpaceFriend(plr) then
+                    SpaceFriends[plr.UserId]=nil
+                    FriendESPEnabled[plr.UserId]=nil
+                    clearFriendHighlight(plr.UserId)
+                else
+                    SpaceFriends[plr.UserId]=true
+                end
+                renderList()
+            end)
+            if friend then
+                local espOn=FriendESPEnabled[plr.UserId] == true
+                local esp=uiButton(row,espOn and "Friend ESP: ON" or "Friend ESP: OFF",
+                    espOn and Color3.fromRGB(45,90,70) or INPUT)
+                esp.Size=UDim2.new(1,0,0,25)
+                esp.Position=UDim2.new(0,0,0,35)
+                esp.TextSize=10
+                esp.MouseButton1Click:Connect(function()
+                    FriendESPEnabled[plr.UserId]=not FriendESPEnabled[plr.UserId]
+                    if not FriendESPEnabled[plr.UserId] then clearFriendHighlight(plr.UserId) end
+                    renderList()
+                end)
+            end
+            listItems[#listItems+1]=row
+        end
     end
 end
 renderList()
-SpaceRuntime:Connect(Players.PlayerAdded, renderList)
-SpaceRuntime:Connect(Players.PlayerRemoving, function() task.defer(renderList) end)
+SpaceRuntime:Connect(Players.PlayerAdded,renderList)
+SpaceRuntime:Connect(Players.PlayerRemoving,function(player)
+    clearFriendHighlight(player.UserId)
+    task.defer(renderList)
+end)
+
+-- Friend ESP is intentionally independent of normal ESP and its exclusion list.
+do
+    local elapsed=0
+    SpaceRuntime:Connect(RunService.Heartbeat,function(dt)
+        elapsed=elapsed+dt
+        if elapsed<0.1 then return end
+        elapsed=0
+        for _,player in ipairs(Players:GetPlayers()) do
+            if player~=LocalPlayer then
+                local id=player.UserId
+                local character=player.Character
+                local active=isSpaceFriend(player) and FriendESPEnabled[id] and character
+                if not active then
+                    clearFriendHighlight(id)
+                else
+                    local highlight=FriendHighlights[id]
+                    if not highlight or highlight.Parent~=character then
+                        clearFriendHighlight(id)
+                        highlight=Instance.new("Highlight")
+                        highlight.Name="SpaceSolutionFriendESP"
+                        highlight.Adornee=character
+                        highlight.FillTransparency=0.7
+                        highlight.OutlineTransparency=0
+                        highlight.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+                        highlight.Parent=character
+                        FriendHighlights[id]=highlight
+                    end
+                    -- Friend ESP color is independent from Rainbow ESP.
+                    local color=(Options.FriendESPColor and Options.FriendESPColor.Value)
+                        or Color3.fromRGB(80,255,150)
+                    if highlight.FillColor~=color then highlight.FillColor=color end
+                    if highlight.OutlineColor~=color then highlight.OutlineColor=color end
+                end
+            end
+        end
+    end)
+    SpaceRuntime:AddCleanup(function()
+        for id in pairs(FriendHighlights) do clearFriendHighlight(id) end
+    end)
+end
 
 -- Drag by top bar, toggle menu with Delete (configurable).
 local drag,grab,orig=false,nil,nil
@@ -1787,6 +1888,19 @@ ESPControls:AddToggle("SkeletonEnabled", {Text = "Skeleton ESP", Default = false
 ESPControls:AddSlider("SkeletonThickness", {Text = "Skeleton Thickness", Default = 2.5, Min = 0.5, Max = 10, Rounding = 1})
 
 ESPControls:AddToggle("ESPRainbow", {Text = "Rainbow ESP (All Colors)", Default = false})
+
+-- Self ESP: highlight your own character (independent from other players' ESP).
+ESPControls:AddToggle("SelfESPEnabled", {Text = "Self ESP", Default = false})
+    :AddColorPicker("SelfESPColor", {Default = Color3.fromRGB(255,255,255), Title = "Self ESP Color"})
+ESPControls:AddToggle("SelfESPThroughWalls", {Text = "Self ESP Through Walls", Default = false})
+
+-- China Hat (local character, screen-space 3D projection)
+ESPControls:AddToggle("ChinaHatEnabled", {Text = "China Hat", Default = false})
+    :AddColorPicker("ChinaHatColor", {Default = Color3.fromRGB(255, 255, 255), Title = "China Hat Color"})
+ESPControls:AddSlider("ChinaHatSize", {Text = "China Hat Size", Default = 1, Min = 0.5, Max = 2, Rounding = 2})
+ESPControls:AddToggle("ChinaHatRainbow", {Text = "China Hat Rainbow", Default = false})
+
+
 
 ESPControls:AddSlider("ESPUpdateRate", {Text = "ESP Update Rate (Hz)", Default = 60, Min = 15, Max = 180, Rounding = 0})
 
@@ -2547,6 +2661,10 @@ SpaceRuntime:AddCleanup(function()
 end)
 
 local function updateESP(player, obj)
+    if isSpaceFriend(player) then
+        hideESP(obj)
+        return
+    end
 
     local character = player.Character
 
@@ -2919,6 +3037,118 @@ local function updateESP(player, obj)
 
     end
 
+end
+
+-- Self ESP uses a single Highlight and follows respawns.
+do
+    local selfHighlight
+    local function updateSelfESP()
+        local character = LocalPlayer.Character
+        local enabled = Toggles.SelfESPEnabled and Toggles.SelfESPEnabled.Value
+        if not enabled or not character then
+            if selfHighlight then
+                selfHighlight:Destroy()
+                selfHighlight = nil
+            end
+            return
+        end
+        if not selfHighlight or selfHighlight.Parent ~= character then
+            if selfHighlight then selfHighlight:Destroy() end
+            selfHighlight = Instance.new("Highlight")
+            selfHighlight.Name = "SpaceSolutionSelfESP"
+            selfHighlight.Adornee = character
+            selfHighlight.Parent = character
+            selfHighlight.FillTransparency = 0.75
+            selfHighlight.OutlineTransparency = 0
+        end
+        local color = (ThemeState.ESPRainbow and rainbowColor(os.clock()))
+            or (Options.SelfESPColor and Options.SelfESPColor.Value)
+            or Color3.new(1, 1, 1)
+        if selfHighlight.FillColor ~= color then selfHighlight.FillColor = color end
+        if selfHighlight.OutlineColor ~= color then selfHighlight.OutlineColor = color end
+        local mode = Toggles.SelfESPThroughWalls and Toggles.SelfESPThroughWalls.Value
+            and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        if selfHighlight.DepthMode ~= mode then selfHighlight.DepthMode = mode end
+    end
+    SpaceRuntime:Connect(LocalPlayer.CharacterAdded, function()
+        if selfHighlight then selfHighlight:Destroy(); selfHighlight = nil end
+        task.defer(updateSelfESP)
+    end)
+    local elapsed = 0
+    SpaceRuntime:Connect(RunService.Heartbeat, function(dt)
+        elapsed = elapsed + dt
+        if elapsed < 0.05 then return end
+        elapsed = 0
+        updateSelfESP()
+    end)
+    SpaceRuntime:AddCleanup(function()
+        if selfHighlight then selfHighlight:Destroy(); selfHighlight = nil end
+    end)
+    updateSelfESP()
+end
+
+-- China Hat is a cosmetic cone above your own head. No teleport or gameplay changes.
+do
+    local segments = 24
+    local brimLines, tipLines = {}, {}
+    for i = 1, segments do
+        local brim = Drawing.new("Line")
+        brim.Thickness = 1.5
+        brim.Visible = false
+        local side = Drawing.new("Line")
+        side.Thickness = 1.5
+        side.Visible = false
+        brimLines[i], tipLines[i] = brim, side
+    end
+    local function hideHat()
+        for i = 1, segments do
+            brimLines[i].Visible = false
+            tipLines[i].Visible = false
+        end
+    end
+    SpaceRuntime:AddCleanup(function()
+        for i = 1, segments do
+            pcall(function() brimLines[i]:Remove() end)
+            pcall(function() tipLines[i]:Remove() end)
+        end
+    end)
+    SpaceRuntime:Connect(RunService.RenderStepped, function()
+        if not (Toggles.ChinaHatEnabled and Toggles.ChinaHatEnabled.Value) then
+            hideHat()
+            return
+        end
+        local character = LocalPlayer.Character
+        local head = character and character:FindFirstChild("Head")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local camera = workspace.CurrentCamera
+        if not head or not camera or not humanoid or humanoid.Health <= 0 then
+            hideHat()
+            return
+        end
+        local scale = (Options.ChinaHatSize and Options.ChinaHatSize.Value) or 1
+        local base = head.Position + Vector3.new(0, head.Size.Y * 0.55 + 0.2 * scale, 0)
+        local apex = base + Vector3.new(0, 0.85 * scale, 0)
+        local radius = 1.15 * scale
+        local color = (Toggles.ChinaHatRainbow and Toggles.ChinaHatRainbow.Value)
+            and Color3.fromHSV((os.clock() * 0.15) % 1, 1, 1)
+            or ((Options.ChinaHatColor and Options.ChinaHatColor.Value) or Color3.new(1, 1, 1))
+        local tip, tipVisible = camera:WorldToViewportPoint(apex)
+        for i = 1, segments do
+            local a = (i - 1) * math.pi * 2 / segments
+            local b = i * math.pi * 2 / segments
+            local p1, v1 = camera:WorldToViewportPoint(base + Vector3.new(math.cos(a) * radius, 0, math.sin(a) * radius))
+            local p2, v2 = camera:WorldToViewportPoint(base + Vector3.new(math.cos(b) * radius, 0, math.sin(b) * radius))
+            local visible = v1 and v2 and tipVisible and p1.Z > 0 and p2.Z > 0 and tip.Z > 0
+            local brim, side = brimLines[i], tipLines[i]
+            brim.Visible = visible
+            side.Visible = visible
+            if visible then
+                brim.From, brim.To = Vector2.new(p1.X, p1.Y), Vector2.new(p2.X, p2.Y)
+                side.From, side.To = Vector2.new(p1.X, p1.Y), Vector2.new(tip.X, tip.Y)
+                brim.Color, side.Color = color, color
+            end
+        end
+    end)
 end
 
 for _, player in ipairs(Players:GetPlayers()) do createESP(player) end
@@ -3393,7 +3623,7 @@ local function triggerTargetValid()
 
     local targetParts = {}
     for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer
+        if player ~= LocalPlayer and not isSpaceFriend(player)
             and (not TriggerBotSettings.TeamCheck or player.Team == nil
                 or player.Team ~= LocalPlayer.Team) then
             local character = player.Character
@@ -4100,7 +4330,7 @@ end)()
         if not hitboxConfig.Enabled then return end
         local activeHeads = {}
         for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character then
+            if player ~= LocalPlayer and not isSpaceFriend(player) and player.Character then
                 local character = player.Character
                 local humanoid = character:FindFirstChildOfClass("Humanoid")
                 local head = character:FindFirstChild("Head")
